@@ -1,5 +1,5 @@
 use std::ops::Deref;
-use std::rc::Rc;
+use std::sync::Arc;
 use chrono::DateTime;
 use reqwest::header::{HeaderMap, HeaderValue};
 
@@ -41,12 +41,12 @@ impl RemoteFileInfo {
 }
 
 pub struct RemoteFile {
-    url: Rc<String>,
+    url: Arc<String>,
     remote_file_info: Option<RemoteFileInfo>,
 }
 
 impl RemoteFile {
-    pub fn new(url: Rc<String>) -> RemoteFile {
+    pub fn new(url: Arc<String>) -> RemoteFile {
         RemoteFile {
             url,
             remote_file_info: None,
