@@ -42,7 +42,7 @@ impl RemoteFileInfo {
 
 pub struct RemoteFile {
     url: Arc<String>,
-    remote_file_info: Option<RemoteFileInfo>,
+    pub remote_file_info: Option<RemoteFileInfo>,
 }
 
 impl RemoteFile {
@@ -65,14 +65,13 @@ impl RemoteFile {
 
 #[cfg(test)]
 mod test {
-    use std::rc::Rc;
+    use std::sync::Arc;
     use crate::remote_file::RemoteFile;
 
     #[tokio::test]
     pub async fn test_remote_file() {
         let url = "https://lan.sausage.xd.com/servers.txt";
-        let rc = Rc::new(url.to_string());
-        let mut remote_file = RemoteFile::new(rc);
+        let mut remote_file = RemoteFile::new(Arc::new(url.to_string()));
         remote_file.head().await;
     }
 }

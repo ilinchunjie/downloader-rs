@@ -1,18 +1,21 @@
+use std::io::Error;
 use tokio::time::Instant;
 use crate::stream::Stream;
 
 pub struct DownloadHandle {
+    file_path: String,
     downloaded_size : i64,
     download_size : i64,
     download_speed : f64,
     last_update_time : Option<Instant>,
-    stream: Stream,
+    stream: Option<Stream>,
 }
 
 impl DownloadHandle {
-    pub fn new(stream : Stream) -> Self {
+    pub fn new(file_path: String) -> Self {
         Self {
-            stream,
+            file_path,
+            stream: None,
             downloaded_size : 0,
             download_size : 0,
             download_speed : 0.,
@@ -20,16 +23,26 @@ impl DownloadHandle {
         }
     }
 
-    pub async fn on_received_bytes_async(&mut self, buffer : &Vec<u8>) {
+    pub async fn setup(&mut self) {
+        let stream = Stream::new(&self.file_path).await;
+        self.stream = Some(stream);
+    }
+
+    pub async fn received_bytes_async(&mut self, buffer : &Vec<u8>) {
         self.downloaded_size += buffer.len() as i64;
         self.download_size = buffer.len() as i64;
-        self.stream.write_async(buffer).await;
+        if let Some(stream) = &mut self.stream {
+            stream.write_async(buffer).await;
+        }
         self.update_download_speed();
         self.last_update_time = Some(Instant::now());
     }
 
-    pub async fn on_complete_async(&mut self) {
-        self.stream.flush_async().await;
+    pub async fn flush_async(&mut self) -> Result<(), Error> {
+        if let Some(stream) = &mut self.stream {
+            return stream.flush_async().await;
+        }
+        Ok(())
     }
 
     pub fn get_download_speed(&self) -> f64 {
