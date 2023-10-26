@@ -1,12 +1,9 @@
-use std::cell::RefCell;
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
-use std::rc::Rc;
 use std::sync::{Arc};
 use bytes::Buf;
 use tokio::spawn;
 use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
 use crate::chunk_hub::ChunkHub;
 use crate::download_configuration::DownloadConfiguration;
 use crate::remote_file::RemoteFile;
@@ -45,9 +42,7 @@ pub struct Downloader {
 
 impl Downloader {
     pub fn new(config: DownloadConfiguration) -> Downloader {
-        let url = config.url.clone();
         let config = Arc::new(Mutex::new(config));
-        let config_clone = config.clone();
         let mut downloader = Downloader {
             config,
             download_status: Arc::new(Mutex::new(DownloaderStatus::None)),
@@ -83,6 +78,7 @@ impl Downloader {
 
     pub async fn stop(&mut self) {
         self.options.lock().await.cancel = true;
+        *self.download_status.lock().await = DownloaderStatus::None;
     }
 }
 
@@ -90,6 +86,10 @@ async fn async_start_download(
     config: Arc<Mutex<DownloadConfiguration>>,
     options: Arc<Mutex<DownloadOptions>>,
     status: Arc<Mutex<DownloaderStatus>>) {
+    if options.lock().await.cancel {
+        return;
+    }
+
     {
         *status.lock().await = DownloaderStatus::Head;
     }
@@ -97,17 +97,23 @@ async fn async_start_download(
     let mut remote_file = RemoteFile::new(config.lock().await.url.clone());
     remote_file.head().await;
 
+    if options.lock().await.cancel {
+        return;
+    }
+
     if let Some(remote_file_info) = remote_file.remote_file_info {
         let mut config = config.lock().await;
         config.remote_version = remote_file_info.last_modified_time;
         config.support_range_download = remote_file_info.support_range_download;
         config.total_length = remote_file_info.total_length;
-        println!("{}", config.total_length);
+    }
+
+    if options.lock().await.cancel {
+        return;
     }
 
     {
         *status.lock().await = DownloaderStatus::Download;
-        println!("{}", *status.lock().await)
     }
 
     let mut chunk_hub = ChunkHub::new(config.clone());
@@ -117,18 +123,24 @@ async fn async_start_download(
         handle.await;
     }
 
+    if options.lock().await.cancel {
+        return;
+    }
+
     {
         *status.lock().await = DownloaderStatus::Archive;
-        println!("{}", *status.lock().await)
     }
 
     if let Some(handle) = chunk_hub.start_archive().await {
         handle.await;
     }
 
+    if options.lock().await.cancel {
+        return;
+    }
+
     {
         *status.lock().await = DownloaderStatus::Complete;
-        println!("{}", *status.lock().await)
     }
 }
 
