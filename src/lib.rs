@@ -7,3 +7,4 @@ mod remote_file;
 mod chunk;
 mod chunk_hub;
 mod download_configuration;
+mod download_service;

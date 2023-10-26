@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, write};
 use std::ops::Deref;
 use std::sync::{Arc};
 use bytes::Buf;
@@ -58,8 +58,8 @@ impl Downloader {
         spawn(async_start_download(self.config.clone(), self.options.clone(), self.download_status.clone()));
     }
 
-    pub async fn get_download_status(&self) -> i32 {
-        match *self.download_status.lock().await {
+    pub fn get_download_status(&self) -> i32 {
+        match *self.download_status.blocking_lock() {
             DownloaderStatus::None => 0,
             DownloaderStatus::Head => 1,
             DownloaderStatus::Download => 2,
@@ -68,17 +68,17 @@ impl Downloader {
         }
     }
 
-    pub async fn get_downloaded_size(&self) -> u64 {
-        self.options.lock().await.downloaded_size
+    pub fn get_downloaded_size(&self) -> u64 {
+        self.options.blocking_lock().downloaded_size
     }
 
-    pub async fn get_total_size(&self) -> u64 {
-        self.config.lock().await.total_length
+    pub fn get_total_size(&self) -> u64 {
+        self.config.blocking_lock().total_length
     }
 
-    pub async fn stop(&mut self) {
-        self.options.lock().await.cancel = true;
-        *self.download_status.lock().await = DownloaderStatus::None;
+    pub fn stop(&mut self) {
+        self.options.blocking_lock().cancel = true;
+        *self.download_status.blocking_lock() = DownloaderStatus::None;
     }
 }
 
@@ -165,23 +165,23 @@ mod test {
             rt.block_on(async {
                 let time = Instant::now();
 
-                let url = "https://n17x06.xdcdn.net/media/SS6_CG_Weather_Kingdom.mp4".to_string();
-                let mut downloader = Downloader::new(DownloadConfiguration::from_url_path(url, "SS6_CG_Weather_Kingdom.mp4".to_string()));
-                downloader.start_download();
-
-                let mut last_progress = 0f32;
-                while downloader.get_download_status().await != 4 {
-                    let total_length = downloader.get_total_size().await as f32;
-                    if total_length > 0f32 {
-                        let size = downloader.get_downloaded_size().await as f32;
-                        let progress = size / total_length;
-                        if progress > last_progress {
-                            println!("{}", progress);
-                            last_progress = progress;
-                        }
-                    }
-
-                }
+                //let url = "https://n17x06.xdcdn.net/media/SS6_CG_Weather_Kingdom.mp4".to_string();
+                //let mut downloader = Downloader::new(DownloadConfiguration::from_url_path(url, "SS6_CG_Weather_Kingdom.mp4".to_string()));
+                //downloader.start_download();
+//
+                //let mut last_progress = 0f32;
+                //while downloader.get_download_status().await != 4 {
+                //    let total_length = downloader.get_total_size().await as f32;
+                //    if total_length > 0f32 {
+                //        let size = downloader.get_downloaded_size().await as f32;
+                //        let progress = size / total_length;
+                //        if progress > last_progress {
+                //            println!("{}", progress);
+                //            last_progress = progress;
+                //        }
+                //    }
+//
+                //}
 
                 println!("took {}s", Instant::now().duration_since(time).as_secs());
             })
