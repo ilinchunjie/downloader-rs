@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 use std::rc::Rc;
 use std::sync::{Arc};
@@ -10,13 +11,25 @@ use crate::chunk_hub::ChunkHub;
 use crate::download_configuration::DownloadConfiguration;
 use crate::remote_file::RemoteFile;
 
-#[derive(PartialEq)]
-enum DownloaderStatus {
+#[derive(PartialEq, Clone)]
+pub enum DownloaderStatus {
     None = 0,
     Head = 1,
     Download = 2,
     Archive = 3,
     Complete = 4,
+}
+
+impl Display for DownloaderStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DownloaderStatus::None => write!(f, "None"),
+            DownloaderStatus::Head => write!(f, "Head"),
+            DownloaderStatus::Download => write!(f, "Download"),
+            DownloaderStatus::Archive => write!(f, "Archive"),
+            DownloaderStatus::Complete => write!(f, "Complete"),
+        }
+    }
 }
 
 pub struct DownloadOptions {
@@ -25,21 +38,21 @@ pub struct DownloadOptions {
 }
 
 pub struct Downloader {
-    config: Rc<RefCell<DownloadConfiguration>>,
+    config: Arc<Mutex<DownloadConfiguration>>,
     remote_file: Arc<Mutex<RemoteFile>>,
     remote_file_request_handle: Option<JoinHandle<()>>,
     chunk_hub: Option<ChunkHub>,
-    download_status: DownloaderStatus,
+    pub download_status: DownloaderStatus,
     options: Arc<Mutex<DownloadOptions>>,
 }
 
 impl Downloader {
     pub fn new(config: DownloadConfiguration) -> Downloader {
-        let config = Rc::new(RefCell::new(config));
-        let remote_url_clone = config.borrow().url.clone();
+        let url = config.url.clone();
+        let config = Arc::new(Mutex::new(config));
         let mut downloader = Downloader {
             config,
-            remote_file: Arc::new(Mutex::new(RemoteFile::new(remote_url_clone))),
+            remote_file: Arc::new(Mutex::new(RemoteFile::new(url))),
             remote_file_request_handle: None,
             chunk_hub: None,
             download_status: DownloaderStatus::None,
@@ -98,22 +111,23 @@ impl Downloader {
     async fn start_download(&mut self) {
         let remote_file = self.remote_file.lock().await;
         if let Some(remote_file_info) = &remote_file.remote_file_info {
-            let mut config = self.config.borrow_mut();
+            let mut config = self.config.lock().await;
             config.remote_version = remote_file_info.last_modified_time;
             config.support_range_download = remote_file_info.support_range_download;
             config.total_length = remote_file_info.total_length;
+            drop(config);
         }
 
         let mut chunk_hub = ChunkHub::new(self.config.clone());
-        chunk_hub.set_file_chunks();
+        chunk_hub.set_file_chunks().await;
         chunk_hub.start_download(&self.options.clone());
 
         self.chunk_hub = Some(chunk_hub);
     }
 
-    fn start_archive(&mut self) {
+    async fn start_archive(&mut self) {
         if let Some(chunk_hub) = &mut self.chunk_hub {
-            chunk_hub.start_archive()
+            chunk_hub.start_archive().await;
         }
     }
 
@@ -130,7 +144,7 @@ impl Downloader {
                 self.start_download().await;
             }
             DownloaderStatus::Archive => {
-                self.start_archive();
+                self.start_archive().await;
             }
             _ => {}
         }

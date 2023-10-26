@@ -6,7 +6,7 @@ use reqwest::header::{HeaderMap, HeaderValue};
 pub struct RemoteFileInfo {
     pub total_length: u64,
     pub support_range_download: bool,
-    pub last_modified_time: i64
+    pub last_modified_time: i64,
 }
 
 impl RemoteFileInfo {
@@ -35,7 +35,7 @@ impl RemoteFileInfo {
         Self {
             total_length,
             support_range_download,
-            last_modified_time
+            last_modified_time,
         }
     }
 }
