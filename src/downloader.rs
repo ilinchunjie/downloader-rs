@@ -165,24 +165,6 @@ mod test {
             rt.block_on(async {
                 let time = Instant::now();
 
-                //let url = "https://n17x06.xdcdn.net/media/SS6_CG_Weather_Kingdom.mp4".to_string();
-                //let mut downloader = Downloader::new(DownloadConfiguration::from_url_path(url, "SS6_CG_Weather_Kingdom.mp4".to_string()));
-                //downloader.start_download();
-//
-                //let mut last_progress = 0f32;
-                //while downloader.get_download_status().await != 4 {
-                //    let total_length = downloader.get_total_size().await as f32;
-                //    if total_length > 0f32 {
-                //        let size = downloader.get_downloaded_size().await as f32;
-                //        let progress = size / total_length;
-                //        if progress > last_progress {
-                //            println!("{}", progress);
-                //            last_progress = progress;
-                //        }
-                //    }
-//
-                //}
-
                 println!("took {}s", Instant::now().duration_since(time).as_secs());
             })
         });

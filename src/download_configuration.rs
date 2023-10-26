@@ -9,6 +9,7 @@ pub struct DownloadConfiguration {
     pub total_length: u64,
     pub remote_version: i64,
     pub remote_file_hash: u64,
+    pub download_in_memory: bool,
 }
 
 impl DownloadConfiguration {
@@ -24,6 +25,7 @@ impl DownloadConfiguration {
             total_length: 0,
             remote_version: 0,
             remote_file_hash: 0,
+            download_in_memory: false
         }
     }
 }

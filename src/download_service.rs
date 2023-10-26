@@ -100,19 +100,6 @@ mod test {
 
         service.start_service();
 
-        let url = "https://n17x06.xdcdn.net/media/SS6_CG_Weather_Kingdom.mp4".to_string();
-        let mut downloader = Downloader::new(DownloadConfiguration::from_url_path(url, "SS6_CG_Weather_Kingdom.mp4".to_string()));
-        let id0 = service.add_downloader(downloader);
-
-        let url = "https://lan.sausage.xd.com/servers.txt".to_string();
-        let mut downloader = Downloader::new(DownloadConfiguration::from_url_path(url, "servers.txt".to_string()));
-        let id1 = service.add_downloader(downloader);
-
-        while service.get_download_status(id0) != 4 || service.get_download_status(id1) != 4 {
-            println!("file1->{}", service.get_downloaded_size(id0));
-            println!("file2->{}", service.get_downloaded_size(id1));
-        }
-
         service.stop();
     }
 }

@@ -62,16 +62,3 @@ impl RemoteFile {
         }
     }
 }
-
-#[cfg(test)]
-mod test {
-    use std::sync::Arc;
-    use crate::remote_file::RemoteFile;
-
-    #[tokio::test]
-    pub async fn test_remote_file() {
-        let url = "https://lan.sausage.xd.com/servers.txt";
-        let mut remote_file = RemoteFile::new(Arc::new(url.to_string()));
-        remote_file.head().await;
-    }
-}

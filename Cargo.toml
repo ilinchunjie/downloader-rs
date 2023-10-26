@@ -2,6 +2,12 @@
 name = "downloader-rs"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "A simple way to download files via HTTP/HTTPS"
+homepage = "https://github.com/ilinchunjie/downloader-rs"
+documentation = "https://github.com/ilinchunjie/downloader-rs"
+repository = "https://github.com/ilinchunjie/downloader-rs"
+readme = "https://github.com/ilinchunjie/downloader-rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -11,10 +17,6 @@ reqwest = { version = "0.11.20", features = ["stream"] }
 bytes = { version = "1.5.0" }
 futures = { version = "0.3.28" }
 chrono = { version = "0.4.31" }
-
-[lib]
-name = "downloader"
-crate-type = ["rlib"]
 
 [profile.release]
 lto = true
