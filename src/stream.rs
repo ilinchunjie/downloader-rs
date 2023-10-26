@@ -8,7 +8,7 @@ pub struct Stream {
 
 impl Stream {
     pub async fn new(path: &String) -> Stream {
-        let file = OpenOptions::new().create(true).write(true).open(&path).await.expect("文件创建失败");
+        let file = OpenOptions::new().create(true).write(true).append(true).open(&path).await.expect("文件创建失败");
         Stream {
             file,
         }

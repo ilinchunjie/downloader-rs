@@ -19,12 +19,18 @@ enum DownloaderStatus {
     Complete = 4,
 }
 
+pub struct DownloadOptions {
+    pub cancel: bool,
+    pub downloaded_size: u64,
+}
+
 pub struct Downloader {
     config: Rc<RefCell<DownloadConfiguration>>,
     remote_file: Arc<Mutex<RemoteFile>>,
     remote_file_request_handle: Option<JoinHandle<()>>,
     chunk_hub: Option<ChunkHub>,
     download_status: DownloaderStatus,
+    options: Arc<Mutex<DownloadOptions>>,
 }
 
 impl Downloader {
@@ -37,6 +43,10 @@ impl Downloader {
             remote_file_request_handle: None,
             chunk_hub: None,
             download_status: DownloaderStatus::None,
+            options: Arc::new(Mutex::new(DownloadOptions {
+                downloaded_size: 0,
+                cancel: false,
+            })),
         };
         downloader
     }
@@ -75,7 +85,10 @@ impl Downloader {
         }
     }
 
-    pub fn stop() {}
+    pub async fn stop(&mut self) {
+        self.options.lock().await.cancel = true;
+        self.set_downloader_status(DownloaderStatus::Complete).await;
+    }
 
     fn start_head(&mut self) {
         let handle = tokio::spawn(async_remote_file(self.remote_file.clone()));
@@ -93,7 +106,7 @@ impl Downloader {
 
         let mut chunk_hub = ChunkHub::new(self.config.clone());
         chunk_hub.set_file_chunks();
-        chunk_hub.start_download();
+        chunk_hub.start_download(&self.options.clone());
 
         self.chunk_hub = Some(chunk_hub);
     }
@@ -132,7 +145,9 @@ async fn async_remote_file(remote_file: Arc<Mutex<RemoteFile>>) {
 #[cfg(test)]
 mod test {
     use std::thread;
+    use std::time::Duration;
     use tokio::runtime;
+    use tokio::time::{Instant, sleep};
     use crate::download_configuration::DownloadConfiguration;
     use crate::downloader::{Downloader, DownloaderStatus};
 
@@ -146,14 +161,20 @@ mod test {
                 .expect("创建失败");
 
             rt.block_on(async {
-                let url = "https://lan.sausage.xd.com/servers.txt".to_string();
-                let mut downloader = Downloader::new(DownloadConfiguration::from_url_path(url, "servers.txt".to_string()));
+                let time = Instant::now();
+
+                let url = "https://n17x06.xdcdn.net/media/SS6_CG_Weather_Kingdom.mp4".to_string();
+                let mut downloader = Downloader::new(DownloadConfiguration::from_url_path(url, "SS6_CG_Weather_Kingdom.mp4".to_string()));
                 downloader.start().await;
                 while downloader.download_status != DownloaderStatus::Complete {
                     downloader.update().await;
+                    if downloader.download_status == DownloaderStatus::Download {
+                        //sleep(Duration::from_secs(4)).await;
+                        //downloader.stop().await;
+                    }
                 }
 
-                println!("complete")
+                println!("took {}s", Instant::now().duration_since(time).as_secs());
             })
         });
 

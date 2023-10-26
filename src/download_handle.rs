@@ -50,6 +50,10 @@ impl DownloadHandle {
         self.download_speed
     }
 
+    pub fn get_downloaded_size(&self) -> u64 {
+        self.downloaded_size as u64
+    }
+
     fn update_download_speed(&mut self) {
         if self.last_update_time == None {
             self.download_speed = 0.;

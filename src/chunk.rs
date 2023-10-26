@@ -1,11 +1,12 @@
-use std::io::{Cursor, Error};
+use std::io::{Error};
 use std::ops::Deref;
 use std::sync::{Arc};
-use byteorder::{LittleEndian, ReadBytesExt};
 use tokio::fs;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::Mutex;
 use crate::download_task::{DownloadTaskConfiguration, DownloadTask};
+use crate::downloader::DownloadOptions;
 
 pub struct Chunk {
     pub file_path: Arc<String>,
@@ -18,7 +19,7 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    pub async fn start_download(&mut self) {
+    pub async fn start_download(&mut self, options: Arc<Mutex<DownloadOptions>>) {
         if let Err(e) = self.save_chunk_version().await {
             println!("{}", e);
         }
@@ -31,7 +32,7 @@ impl Chunk {
             url : self.url.clone(),
         };
         let mut task = DownloadTask::new(config);
-        task.start_download().await;
+        task.start_download(options).await;
     }
 
     pub async fn save_chunk_version(&mut self) -> Result<(), Error> {
@@ -50,15 +51,20 @@ impl Chunk {
 
     pub async fn get_local_version(&self) -> i64 {
         let meta_path = format!("{}.meta", self.file_path);
-        let mut version_file_result = OpenOptions::new().open(meta_path).await;
+        let mut meta_file_result = OpenOptions::new().read(true).open(meta_path).await;
         let mut version = 0i64;
-        if let Ok(version_file) = &mut version_file_result {
-            let mut buffer: Vec<u8> = vec![];
-            let result = version_file.read_to_end(&mut buffer).await;
-            if let Ok(length) = result {
-                let mut i64_bytes = [0u8; 8];
-                i64_bytes.copy_from_slice(&buffer);
-                version = i64::from_le_bytes(i64_bytes);
+        match &mut meta_file_result {
+            Ok(meta_file) => {
+                let mut buffer: Vec<u8> = vec![];
+                let result = meta_file.read_to_end(&mut buffer).await;
+                if let Ok(length) = result {
+                    let mut i64_bytes = [0u8; 8];
+                    i64_bytes.copy_from_slice(&buffer);
+                    version = i64::from_le_bytes(i64_bytes);
+                }
+            }
+            Err(e) => {
+                println!("{}", e);
             }
         }
         version
@@ -79,12 +85,14 @@ impl Chunk {
 
         let chunk_file_metadata = chunk_file_result.unwrap();
         let chunk_length = chunk_file_metadata.len();
-        let remote_length = self.start - self.end + 1;
+        let remote_length = self.end - self.start + 1;
         if chunk_length > remote_length {
             self.valid = false;
             return;
         }
         self.start = self.start + chunk_length;
-        self.valid = self.start == self.end;
+        self.valid = self.start == self.end + 1;
+
+        println!("{}", self.valid);
     }
 }

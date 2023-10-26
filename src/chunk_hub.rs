@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use crate::chunk::Chunk;
 use crate::download_configuration::DownloadConfiguration;
+use crate::downloader::DownloadOptions;
 
 pub struct ChunkHub {
     config: Rc<RefCell<DownloadConfiguration>>,
@@ -29,11 +30,12 @@ impl ChunkHub {
         }
     }
 
-    pub fn start_download(&mut self) {
+    pub fn start_download(&mut self, options: &Arc<Mutex<DownloadOptions>>) {
         if let Some(chunks) = &mut self.chunks {
             self.download_handles = Some(vec![]);
             for chunk in chunks {
-                let handle = spawn(start_download_chunks(chunk.clone()));
+                println!("start_download_chunks");
+                let handle = spawn(start_download_chunks(chunk.clone(), options.clone()));
                 self.download_handles.as_mut().unwrap().push(handle);
             }
         }
@@ -67,17 +69,20 @@ impl ChunkHub {
 
     pub fn set_file_chunks(&mut self) {
         self.chunks = None;
-        let chunk_count = (self.config.borrow().total_length as f64 / self.config.borrow().chunk_size as f64).ceil() as u64;
+        let mut chunk_count = (self.config.borrow().total_length as f64 / self.config.borrow().chunk_size as f64).ceil() as u64;
         let mut chunks: Vec<Arc<Mutex<Chunk>>> = Vec::with_capacity(chunk_count as usize);
+        if !self.config.borrow().support_range_download || !self.config.borrow().chunk_download {
+            chunk_count = 1;
+        }
         let mut file_paths: Vec<Arc<String>> = Vec::with_capacity(chunk_count as usize);
         match chunk_count {
             1 => {
                 let chunk_file_path = Arc::new(format!("{}.chunk", self.config.borrow().path));
                 let chunk = Chunk {
                     file_path: chunk_file_path.clone(),
-                    range_download: false,
+                    range_download: self.config.borrow().support_range_download,
                     start: 0,
-                    end: 0,
+                    end: self.config.borrow().total_length - 1,
                     valid: false,
                     version: self.config.borrow().remote_version,
                     url: self.config.borrow().url.clone(),
@@ -91,7 +96,7 @@ impl ChunkHub {
                     let start_position = i * self.config.borrow().chunk_size;
                     let mut end_position = start_position + self.config.borrow().chunk_size - 1;
                     if i == chunk_count - 1 {
-                        end_position = end_position + self.config.borrow().total_length % chunk_count;
+                        end_position = start_position + self.config.borrow().total_length % self.config.borrow().chunk_size - 1;
                     }
                     let chunk_file_path = Arc::new(format!("{}.chunk{}", self.config.borrow().path, i));
                     let chunk = Chunk {
@@ -114,11 +119,11 @@ impl ChunkHub {
     }
 }
 
-async fn start_download_chunks(chunk: Arc<Mutex<Chunk>>) {
+async fn start_download_chunks(chunk: Arc<Mutex<Chunk>>, options: Arc<Mutex<DownloadOptions>>) {
     let mut chunk = chunk.lock().await;
     chunk.validate().await;
     if !chunk.valid {
-        chunk.start_download().await;
+        chunk.start_download(options).await;
     }
 }
 
