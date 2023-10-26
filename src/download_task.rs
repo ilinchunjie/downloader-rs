@@ -3,10 +3,12 @@ use std::ops::Deref;
 use std::sync::Arc;
 use futures::StreamExt;
 use reqwest::header::RANGE;
+use tokio::sync::Mutex;
 use crate::download_handle::DownloadHandle;
 
 #[derive(Clone)]
 pub struct DownloadTaskConfiguration {
+    pub file_path: Arc<String>,
     pub url: Arc<String>,
     pub range_download: bool,
     pub range_start: u64,
@@ -19,10 +21,11 @@ pub struct DownloadTask {
 }
 
 impl DownloadTask {
-    pub fn new(file_path: String, config: DownloadTaskConfiguration) -> DownloadTask {
+    pub fn new(config: DownloadTaskConfiguration) -> DownloadTask {
+        let file_path_clone = config.file_path.clone();
         DownloadTask {
             config,
-            handle: DownloadHandle::new(file_path),
+            handle: DownloadHandle::new(file_path_clone),
         }
     }
 
@@ -43,7 +46,6 @@ impl DownloadTask {
         let result = request.send().await;
         if let Ok(response) = result {
             if response.status().is_success() {
-
                 self.handle.setup().await;
 
                 let mut body = response.bytes_stream();

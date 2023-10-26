@@ -1,9 +1,10 @@
 use std::io::Error;
+use std::sync::Arc;
 use tokio::time::Instant;
 use crate::stream::Stream;
 
 pub struct DownloadHandle {
-    file_path: String,
+    file_path: Arc<String>,
     downloaded_size : i64,
     download_size : i64,
     download_speed : f64,
@@ -12,7 +13,7 @@ pub struct DownloadHandle {
 }
 
 impl DownloadHandle {
-    pub fn new(file_path: String) -> Self {
+    pub fn new(file_path: Arc<String>) -> Self {
         Self {
             file_path,
             stream: None,

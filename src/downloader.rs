@@ -1,10 +1,13 @@
+use std::cell::RefCell;
 use std::ops::Deref;
+use std::rc::Rc;
 use std::sync::{Arc};
 use bytes::Buf;
 use tokio::spawn;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use crate::download_task::{DownloadTaskConfiguration, DownloadTask};
+use crate::chunk_hub::ChunkHub;
+use crate::download_configuration::DownloadConfiguration;
 use crate::remote_file::RemoteFile;
 
 #[derive(PartialEq)]
@@ -12,30 +15,27 @@ enum DownloaderStatus {
     None = 0,
     Head = 1,
     Download = 2,
-    Complete = 3,
+    Archive = 3,
+    Complete = 4,
 }
 
 pub struct Downloader {
-    file_path: String,
-    remote_url: Arc<String>,
+    config: Rc<RefCell<DownloadConfiguration>>,
     remote_file: Arc<Mutex<RemoteFile>>,
     remote_file_request_handle: Option<JoinHandle<()>>,
-    download_tasks: Option<Vec<Arc<Mutex<DownloadTask>>>>,
-    download_task_handles: Option<Vec<JoinHandle<()>>>,
+    chunk_hub: Option<ChunkHub>,
     download_status: DownloaderStatus,
 }
 
 impl Downloader {
-    pub fn new(remote_url: String, file_path: String) -> Downloader {
-        let remote_url= Arc::new(remote_url);
-        let remote_url_clone = remote_url.clone();
+    pub fn new(config: DownloadConfiguration) -> Downloader {
+        let config = Rc::new(RefCell::new(config));
+        let remote_url_clone = config.borrow().url.clone();
         let mut downloader = Downloader {
-            file_path,
-            remote_url,
+            config,
             remote_file: Arc::new(Mutex::new(RemoteFile::new(remote_url_clone))),
             remote_file_request_handle: None,
-            download_tasks: None,
-            download_task_handles: None,
+            chunk_hub: None,
             download_status: DownloaderStatus::None,
         };
         downloader
@@ -58,14 +58,15 @@ impl Downloader {
                 }
             }
             DownloaderStatus::Download => {
-                if let Some(handles) = &self.download_task_handles {
-                    let mut complete = true;
-                    for handle in handles {
-                        if !handle.is_finished() {
-                            complete = false;
-                        }
+                if let Some(chunk_hub) = &mut self.chunk_hub {
+                    if chunk_hub.is_download_done() {
+                        self.set_downloader_status(DownloaderStatus::Archive).await;
                     }
-                    if complete {
+                }
+            }
+            DownloaderStatus::Archive => {
+                if let Some(chunk_hub) = &mut self.chunk_hub {
+                    if chunk_hub.is_archive_done() {
                         self.set_downloader_status(DownloaderStatus::Complete).await;
                     }
                 }
@@ -83,46 +84,23 @@ impl Downloader {
 
     async fn start_download(&mut self) {
         let remote_file = self.remote_file.lock().await;
-        let mut chunks: Option<Vec<(u64, u64)>> = None;
         if let Some(remote_file_info) = &remote_file.remote_file_info {
-            let range_download = remote_file_info.support_range_download;
-            let total_length = remote_file_info.total_length;
-            chunks = get_download_chunks(total_length, range_download);
+            let mut config = self.config.borrow_mut();
+            config.remote_version = remote_file_info.last_modified_time;
+            config.support_range_download = remote_file_info.support_range_download;
+            config.total_length = remote_file_info.total_length;
         }
 
-        self.download_tasks = Some(vec![]);
-        if let Some(chunks) = chunks {
-            for (i, chunk) in chunks.iter().enumerate() {
-                let config = DownloadTaskConfiguration {
-                    url: self.remote_url.clone(),
-                    range_start: chunk.0,
-                    range_end: chunk.1,
-                    range_download: true,
-                };
-                let path = format!("{}.chunk{}", self.file_path, i);
-                println!("{}", path);
-                let task = DownloadTask::new(path, config);
-                let task = Arc::new(Mutex::new(task));
-                self.download_tasks.as_mut().unwrap().push(task);
-            }
-        } else {
-            let config = DownloadTaskConfiguration {
-                url: self.remote_url.clone(),
-                range_start: 0,
-                range_end: 0,
-                range_download: false,
-            };
-            let task = DownloadTask::new(self.file_path.clone(), config);
-            let task = Arc::new(Mutex::new(task));
-            self.download_tasks.as_mut().unwrap().push(task);
-        }
+        let mut chunk_hub = ChunkHub::new(self.config.clone());
+        chunk_hub.set_file_chunks();
+        chunk_hub.start_download();
 
-        if let Some(tasks) = &self.download_tasks {
-            self.download_task_handles = Some(vec![]);
-            for task in tasks {
-                let handle = spawn(async_download_task(task.clone()));
-                self.download_task_handles.as_mut().unwrap().push(handle);
-            }
+        self.chunk_hub = Some(chunk_hub);
+    }
+
+    fn start_archive(&mut self) {
+        if let Some(chunk_hub) = &mut self.chunk_hub {
+            chunk_hub.start_archive()
         }
     }
 
@@ -138,28 +116,12 @@ impl Downloader {
             DownloaderStatus::Download => {
                 self.start_download().await;
             }
+            DownloaderStatus::Archive => {
+                self.start_archive();
+            }
             _ => {}
         }
     }
-}
-
-fn get_download_chunks(total_length: u64, range_download: bool) -> Option<Vec<(u64, u64)>> {
-    println!("{}", total_length);
-    if !range_download || total_length < 1024 * 50 {
-        return None;
-    }
-    let mut chunks: Vec<(u64, u64)> = vec![];
-    let chunk_count = 3;
-    let chunk_size = total_length / chunk_count;
-    for i in 0..chunk_count {
-        let start_position = i * chunk_size;
-        let mut end_position = start_position + chunk_size - 1;
-        if i == chunk_count - 1 {
-            end_position = end_position + total_length % chunk_count;
-        }
-        chunks.push((start_position, end_position));
-    }
-    Some(chunks)
 }
 
 async fn async_remote_file(remote_file: Arc<Mutex<RemoteFile>>) {
@@ -167,15 +129,11 @@ async fn async_remote_file(remote_file: Arc<Mutex<RemoteFile>>) {
     remote_file.head().await;
 }
 
-async fn async_download_task(task: Arc<Mutex<DownloadTask>>) {
-    let mut task = task.lock().await;
-    task.start_download().await;
-}
-
 #[cfg(test)]
 mod test {
     use std::thread;
     use tokio::runtime;
+    use crate::download_configuration::DownloadConfiguration;
     use crate::downloader::{Downloader, DownloaderStatus};
 
     #[tokio::test]
@@ -189,7 +147,7 @@ mod test {
 
             rt.block_on(async {
                 let url = "https://lan.sausage.xd.com/servers.txt".to_string();
-                let mut downloader = Downloader::new(url, "servers.txt".to_string());
+                let mut downloader = Downloader::new(DownloadConfiguration::from_url_path(url, "servers.txt".to_string()));
                 downloader.start().await;
                 while downloader.download_status != DownloaderStatus::Complete {
                     downloader.update().await;

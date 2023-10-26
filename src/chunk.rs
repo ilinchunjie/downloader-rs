@@ -1,67 +1,85 @@
-use std::fs;
-use std::fs::OpenOptions;
-use std::io::{Cursor, Read};
-use std::sync::Arc;
+use std::io::{Cursor, Error};
+use std::ops::Deref;
+use std::sync::{Arc};
 use byteorder::{LittleEndian, ReadBytesExt};
+use tokio::fs;
+use tokio::fs::OpenOptions;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use crate::download_task::{DownloadTaskConfiguration, DownloadTask};
 
 pub struct Chunk {
-    pub file_path: String,
-    pub valid: bool,
-    pub version: u64,
+    pub file_path: Arc<String>,
+    pub url: Arc<String>,
+    pub range_download: bool,
     pub start: u64,
     pub end: u64,
+    pub valid: bool,
+    pub version: i64,
 }
 
 impl Chunk {
-    pub fn new(file_path: String, start: u64, end: u64) -> Self {
-        Self {
-            file_path,
-            valid: false,
-            version: 0,
-            start,
-            end,
+    pub async fn start_download(&mut self) {
+        if let Err(e) = self.save_chunk_version().await {
+            println!("{}", e);
         }
-    }
 
-    pub async fn start_download(&mut self, url: Arc<String>) {
-        let mut task = DownloadTask::new(self.file_path.clone(), DownloadTaskConfiguration {
-            range_download : true,
-            range_start: self.start,
-            range_end: self.end,
-            url
-        });
+        let config = DownloadTaskConfiguration {
+            file_path: self.file_path.clone(),
+            range_download : self.range_download,
+            range_start : self.start,
+            range_end : self.end,
+            url : self.url.clone(),
+        };
+        let mut task = DownloadTask::new(config);
         task.start_download().await;
     }
 
-    pub async fn save_chunk_version(&mut self) {
+    pub async fn save_chunk_version(&mut self) -> Result<(), Error> {
+        let meta_path = format!("{}.meta", self.file_path);
+        let mut version_file_result = OpenOptions::new().create(true).write(true).open(meta_path).await;
+        if let Ok(version_file) = &mut version_file_result {
+            let bytes = self.version.to_le_bytes();
+            if let Err(e) = version_file.write_all(&bytes).await {
+                return Err(e);
+            }
+            return version_file.flush().await;
+        }
 
+        Ok(())
     }
 
-    pub fn validate(&mut self, remote_version: u64) {
-        let chunk_file_result = fs::metadata(&self.file_path);
+    pub async fn get_local_version(&self) -> i64 {
+        let meta_path = format!("{}.meta", self.file_path);
+        let mut version_file_result = OpenOptions::new().open(meta_path).await;
+        let mut version = 0i64;
+        if let Ok(version_file) = &mut version_file_result {
+            let mut buffer: Vec<u8> = vec![];
+            let result = version_file.read_to_end(&mut buffer).await;
+            if let Ok(length) = result {
+                let mut i64_bytes = [0u8; 8];
+                i64_bytes.copy_from_slice(&buffer);
+                version = i64::from_le_bytes(i64_bytes);
+            }
+        }
+        version
+    }
+
+    pub async fn validate(&mut self) {
+        let chunk_file_result = fs::metadata(self.file_path.deref()).await;
         if let Err(e) = chunk_file_result {
             self.valid = false;
             return;
         }
-        let version_path = format!("{}.version", self.file_path);
-        let mut version_file_result = OpenOptions::new().open(version_path);
-        let mut version = 0u64;
-        if let Ok(version_file) = &mut version_file_result {
-            let mut buffer: Vec<u8> = vec![];
-            let result = version_file.read_to_end(&mut buffer);
-            if let Ok(length) = result {
-                let mut rdr = Cursor::new(buffer);
-                version = rdr.read_u64::<LittleEndian>().unwrap();
-            }
-        }
-        if version == 0 || version != remote_version {
+
+        let local_version = self.get_local_version().await;
+        if local_version == 0 || local_version != self.version {
             self.valid = false;
             return;
         }
+
         let chunk_file_metadata = chunk_file_result.unwrap();
         let chunk_length = chunk_file_metadata.len();
-        let remote_length = self.end - self.start + 1;
+        let remote_length = self.start - self.end + 1;
         if chunk_length > remote_length {
             self.valid = false;
             return;
