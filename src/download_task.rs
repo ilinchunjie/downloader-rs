@@ -1,16 +1,25 @@
 use std::fmt::{Debug};
-use crate::download_configuration::DownloadConfiguration;
+use std::ops::Deref;
+use std::sync::Arc;
 use futures::StreamExt;
 use reqwest::header::RANGE;
 use crate::download_handle::DownloadHandle;
 
+#[derive(Clone)]
+pub struct DownloadTaskConfiguration {
+    pub url: Arc<String>,
+    pub range_download: bool,
+    pub range_start: u64,
+    pub range_end: u64,
+}
+
 pub struct DownloadTask {
-    config: DownloadConfiguration,
+    config: DownloadTaskConfiguration,
     handle: DownloadHandle,
 }
 
 impl DownloadTask {
-    pub fn new(file_path: String, config: DownloadConfiguration) -> DownloadTask {
+    pub fn new(file_path: String, config: DownloadTaskConfiguration) -> DownloadTask {
         DownloadTask {
             config,
             handle: DownloadHandle::new(file_path),
@@ -28,7 +37,7 @@ impl DownloadTask {
         }
 
         let request = reqwest::Client::new().
-            get(&self.config.url).
+            get(self.config.url.deref()).
             header(RANGE, range_str);
 
         let result = request.send().await;

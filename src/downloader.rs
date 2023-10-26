@@ -4,8 +4,7 @@ use bytes::Buf;
 use tokio::spawn;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use crate::download_configuration::DownloadConfiguration;
-use crate::download_task::DownloadTask;
+use crate::download_task::{DownloadTaskConfiguration, DownloadTask};
 use crate::remote_file::RemoteFile;
 
 #[derive(PartialEq)]
@@ -94,8 +93,8 @@ impl Downloader {
         self.download_tasks = Some(vec![]);
         if let Some(chunks) = chunks {
             for (i, chunk) in chunks.iter().enumerate() {
-                let config = DownloadConfiguration {
-                    url: self.remote_url.deref().clone(),
+                let config = DownloadTaskConfiguration {
+                    url: self.remote_url.clone(),
                     range_start: chunk.0,
                     range_end: chunk.1,
                     range_download: true,
@@ -107,8 +106,8 @@ impl Downloader {
                 self.download_tasks.as_mut().unwrap().push(task);
             }
         } else {
-            let config = DownloadConfiguration {
-                url: self.remote_url.deref().clone(),
+            let config = DownloadTaskConfiguration {
+                url: self.remote_url.clone(),
                 range_start: 0,
                 range_end: 0,
                 range_download: false,
