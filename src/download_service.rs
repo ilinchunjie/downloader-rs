@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::ops::DerefMut;
 use std::sync::{Arc};
 use std::thread;
@@ -7,10 +7,13 @@ use tokio::runtime;
 use tokio::sync::Mutex;
 use crate::downloader::Downloader;
 
+type Downloaders = HashMap<u64, Arc<Mutex<Downloader>>>;
+
 pub struct DownloadService {
+    instance_id: u64,
     cancel: Arc<Mutex<bool>>,
-    download_queue: Arc<Mutex<VecDeque<usize>>>,
-    downloaders: Arc<Mutex<Vec<Arc<Mutex<Downloader>>>>>,
+    download_queue: Arc<Mutex<VecDeque<u64>>>,
+    downloaders: Arc<Mutex<Downloaders>>,
     thread_handle: Option<JoinHandle<()>>,
 }
 
@@ -28,8 +31,8 @@ impl DownloadService {
 
             rt.block_on(async {
                 while !*cancel.lock().await {
-                    if let Some(index) = queue.lock().await.pop_front() {
-                        if let Some(downloader) = &mut downloaders.lock().await.get(index) {
+                    if let Some(id) = queue.lock().await.pop_front() {
+                        if let Some(downloader) = &mut downloaders.lock().await.get(&id) {
                             downloader.lock().await.start_download();
                         }
                     }
@@ -40,22 +43,30 @@ impl DownloadService {
         self.thread_handle = Some(handle);
     }
 
-    pub fn add_downloader(&mut self, downloader: Downloader) -> usize {
-        let len = self.downloaders.blocking_lock().len();
-        self.downloaders.blocking_lock().push(Arc::new(Mutex::new(downloader)));
-        self.download_queue.blocking_lock().push_front(len);
-        return len;
+    pub fn add_downloader(&mut self, downloader: Downloader) -> u64 {
+        self.instance_id = self.instance_id + 1;
+        let downloader = Arc::new(Mutex::new(downloader));
+        self.downloaders.blocking_lock().insert(self.instance_id, downloader);
+        self.download_queue.blocking_lock().push_front(self.instance_id);
+        return self.instance_id;
     }
 
-    pub fn get_downloaded_size(&mut self, index: usize) -> u64 {
-        if let Some(downloader) = self.downloaders.blocking_lock().get(index) {
+    pub fn remove_downloader(&mut self, id: u64) {
+        if let Some(downloader) = self.downloaders.blocking_lock().get(&id) {
+            downloader.blocking_lock().stop();
+            self.downloaders.blocking_lock().remove(&id);
+        }
+    }
+
+    pub fn get_downloaded_size(&mut self, id: u64) -> u64 {
+        if let Some(downloader) = self.downloaders.blocking_lock().get(&id) {
             return downloader.blocking_lock().get_downloaded_size();
         }
         return 0;
     }
 
-    pub fn get_download_status(&mut self, index: usize) -> i32 {
-        if let Some(downloader) = self.downloaders.blocking_lock().get(index) {
+    pub fn get_download_status(&mut self, id: u64) -> i32 {
+        if let Some(downloader) = self.downloaders.blocking_lock().get(&id) {
             return downloader.blocking_lock().get_download_status();
         }
         return 0;
@@ -74,31 +85,32 @@ mod test {
     use std::time::Duration;
     use tokio::sync::Mutex;
     use crate::download_configuration::DownloadConfiguration;
-    use crate::download_service::DownloadService;
+    use crate::download_service::{Downloaders, DownloadService};
     use crate::downloader::{Downloader};
 
     #[test]
     fn test_download_service() {
         let mut service = DownloadService {
+            instance_id: 0u64,
             download_queue: Arc::new(Mutex::new(VecDeque::new())),
-            downloaders: Arc::new(Mutex::new(Vec::new())),
+            downloaders: Arc::new(Mutex::new(Downloaders::new())),
             thread_handle: None,
-            cancel: Arc::new(Mutex::new(false))
+            cancel: Arc::new(Mutex::new(false)),
         };
 
         service.start_service();
 
         let url = "https://n17x06.xdcdn.net/media/SS6_CG_Weather_Kingdom.mp4".to_string();
         let mut downloader = Downloader::new(DownloadConfiguration::from_url_path(url, "SS6_CG_Weather_Kingdom.mp4".to_string()));
-        let index0 = service.add_downloader(downloader);
+        let id0 = service.add_downloader(downloader);
 
         let url = "https://lan.sausage.xd.com/servers.txt".to_string();
         let mut downloader = Downloader::new(DownloadConfiguration::from_url_path(url, "servers.txt".to_string()));
-        let index1 = service.add_downloader(downloader);
+        let id1 = service.add_downloader(downloader);
 
-        while service.get_download_status(index0) != 4 || service.get_download_status(index1) != 4 {
-            println!("file1->{}", service.get_downloaded_size(index0));
-            println!("file2->{}", service.get_downloaded_size(index1));
+        while service.get_download_status(id0) != 4 || service.get_download_status(id1) != 4 {
+            println!("file1->{}", service.get_downloaded_size(id0));
+            println!("file2->{}", service.get_downloaded_size(id1));
         }
 
         service.stop();
