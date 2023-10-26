@@ -15,8 +15,6 @@ pub struct ChunkHub {
     config: Arc<Mutex<DownloadConfiguration>>,
     file_paths: Option<Arc<Vec<Arc<String>>>>,
     chunks: Option<Vec<Arc<Mutex<Chunk>>>>,
-    download_handles: Option<Vec<JoinHandle<()>>>,
-    archive_handle: Option<JoinHandle<()>>,
 }
 
 impl ChunkHub {
@@ -25,45 +23,25 @@ impl ChunkHub {
             config,
             file_paths: None,
             chunks: None,
-            download_handles: None,
-            archive_handle: None,
         }
     }
 
-    pub fn start_download(&mut self, options: &Arc<Mutex<DownloadOptions>>) {
+    pub fn start_download(&mut self, options: Arc<Mutex<DownloadOptions>>) -> Vec<JoinHandle<()>> {
+        let mut handles: Vec<JoinHandle<()>> = vec![];
         if let Some(chunks) = &mut self.chunks {
-            self.download_handles = Some(vec![]);
             for chunk in chunks {
                 let handle = spawn(start_download_chunks(chunk.clone(), options.clone()));
-                self.download_handles.as_mut().unwrap().push(handle);
+                handles.push(handle);
             }
         }
+        return handles;
     }
 
-    pub async fn start_archive(&mut self) {
+    pub async fn start_archive(&mut self) -> Option<JoinHandle<()>> {
         if let Some(file_paths) = &self.file_paths {
-            let handle = spawn(start_archive_chunks(self.config.lock().await.path.clone(), file_paths.clone()));
-            self.archive_handle = Some(handle);
+            return Some(spawn(start_archive_chunks(self.config.lock().await.path.clone(), file_paths.clone())));
         }
-    }
-
-    pub fn is_download_done(&self) -> bool {
-        let mut complete = true;
-        if let Some(handles) = &self.download_handles {
-            for handle in handles {
-                if !handle.is_finished() {
-                    complete = false;
-                }
-            }
-        }
-        complete
-    }
-
-    pub fn is_archive_done(&self) -> bool {
-        if let Some(archive_handle) = &self.archive_handle {
-            return archive_handle.is_finished()
-        }
-        return false
+        None
     }
 
     pub async fn set_file_chunks(&mut self) {
@@ -121,9 +99,9 @@ impl ChunkHub {
 
 async fn start_download_chunks(chunk: Arc<Mutex<Chunk>>, options: Arc<Mutex<DownloadOptions>>) {
     let mut chunk = chunk.lock().await;
-    chunk.validate().await;
+    chunk.validate(options.clone()).await;
     if !chunk.valid {
-        chunk.start_download(options).await;
+        chunk.start_download(options.clone()).await;
     }
 }
 

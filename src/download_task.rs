@@ -66,6 +66,7 @@ impl DownloadTask {
                     match chunk {
                         Ok(bytes) => {
                             let buffer = bytes.to_vec() as Vec<u8>;
+                            options.lock().await.downloaded_size += buffer.len() as u64;
                             self.handle.received_bytes_async(&buffer).await;
                         }
                         Err(e) => {

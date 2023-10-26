@@ -70,7 +70,7 @@ impl Chunk {
         version
     }
 
-    pub async fn validate(&mut self) {
+    pub async fn validate(&mut self, options: Arc<Mutex<DownloadOptions>>) {
         let chunk_file_result = fs::metadata(self.file_path.deref()).await;
         if let Err(e) = chunk_file_result {
             self.valid = false;
@@ -93,6 +93,6 @@ impl Chunk {
         self.start = self.start + chunk_length;
         self.valid = self.start == self.end + 1;
 
-        println!("{}", self.valid);
+        options.lock().await.downloaded_size += chunk_length;
     }
 }
