@@ -113,7 +113,7 @@ mod test {
         let url = "https://n17x06.xdcdn.net/media/SS6_CG_Weather_Kingdom.mp4".to_string();
         let config = DownloadConfiguration::new()
             .set_url(url)
-            .set_file_path("SS6_CG_Weather_Kingdom.mp4".to_string())
+            .set_file_path("temp/SS6_CG_Weather_Kingdom.mp4".to_string())
             .build();
         let mut downloader = Downloader::new(config);
         let id0 = service.add_downloader(downloader);
