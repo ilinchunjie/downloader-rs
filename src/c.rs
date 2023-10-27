@@ -7,6 +7,8 @@ use crate::downloader::Downloader;
 pub struct DownloadConfig {
     url: *const c_char,
     path: *const c_char,
+    chunk_download: bool,
+    chunk_siez: u64,
 }
 
 #[no_mangle]
@@ -32,7 +34,12 @@ pub extern "C" fn add_downloader(ptr: *mut DownloadService, config: DownloadConf
     let download_service = unsafe { ptr.as_mut().expect("invalid ptr: ") };
     let url = unsafe { CStr::from_ptr(config.url).to_string_lossy().to_string() };
     let path = unsafe { CStr::from_ptr(config.path).to_string_lossy().to_string() };
-    let config = DownloadConfiguration::from_url_path(url, path);
+    let config = DownloadConfiguration::new()
+        .set_url(url)
+        .set_file_path(path)
+        .set_chunk_download(config.chunk_download)
+        .set_chunk_size(config.chunk_siez)
+        .build();
     let downloader = Downloader::new(config);
     download_service.add_downloader(downloader)
 }

@@ -105,7 +105,7 @@ async fn async_start_download(
         *status.lock().await = DownloaderStatus::Head;
     }
 
-    let mut remote_file = RemoteFile::new(config.lock().await.url.clone());
+    let mut remote_file = RemoteFile::new(config.lock().await.url.as_ref().unwrap().clone());
     let mut remote_file_info: Option<RemoteFileInfo> = None;
     match remote_file.head().await {
         Ok(value) => {
@@ -180,7 +180,11 @@ mod test {
     #[test]
     fn test_downloader() {
         let url = "https://lan.sausage.xd.com/servers.txt".to_string();
-        let mut downloader = Downloader::new(DownloadConfiguration::from_url_path(url, "servers.txt".to_string()));
+        let config = DownloadConfiguration::new()
+            .set_url(url)
+            .set_file_path("servers.txt".to_string())
+            .build();
+        let mut downloader = Downloader::new(config);
         let mut downloader = Arc::new(Mutex::new(downloader));
         let downloader_clone = downloader.clone();
         let handle = thread::spawn(move || {

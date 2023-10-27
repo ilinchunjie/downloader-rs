@@ -39,7 +39,7 @@ impl ChunkHub {
 
     pub async fn start_archive(&mut self) -> Option<JoinHandle<()>> {
         if let Some(file_paths) = &self.file_paths {
-            return Some(spawn(start_archive_chunks(self.config.lock().await.path.clone(), file_paths.clone())));
+            return Some(spawn(start_archive_chunks(self.config.lock().await.path.as_ref().unwrap().clone(), file_paths.clone())));
         }
         None
     }
@@ -47,15 +47,16 @@ impl ChunkHub {
     pub async fn set_file_chunks(&mut self) {
         self.chunks = None;
         let config = self.config.lock().await;
-        let mut chunk_count = (config.total_length as f64 / config.chunk_size as f64).ceil() as u64;
-        let mut chunks: Vec<Arc<Mutex<Chunk>>> = Vec::with_capacity(chunk_count as usize);
-        if !config.support_range_download || !config.chunk_download {
-            chunk_count = 1;
+        let mut chunk_count = 1;
+        if config.support_range_download && config.chunk_download {
+            chunk_count = (config.total_length as f64 / config.chunk_size as f64).ceil() as u64;
         }
+
+        let mut chunks: Vec<Arc<Mutex<Chunk>>> = Vec::with_capacity(chunk_count as usize);
         let mut file_paths: Vec<Arc<String>> = Vec::with_capacity(chunk_count as usize);
         match chunk_count {
             1 => {
-                let chunk_file_path = Arc::new(format!("{}.chunk", config.path));
+                let chunk_file_path = Arc::new(format!("{}.chunk", config.path.as_ref().unwrap()));
                 let chunk = Chunk {
                     file_path: chunk_file_path.clone(),
                     range_download: config.support_range_download,
@@ -63,7 +64,7 @@ impl ChunkHub {
                     end: config.total_length - 1,
                     valid: false,
                     version: config.remote_version,
-                    url: config.url.clone(),
+                    url: config.url.as_ref().unwrap().clone(),
                 };
                 let chunk = Arc::new(Mutex::new(chunk));
                 chunks.push(chunk);
@@ -76,7 +77,7 @@ impl ChunkHub {
                     if i == chunk_count - 1 {
                         end_position = start_position + config.total_length % config.chunk_size - 1;
                     }
-                    let chunk_file_path = Arc::new(format!("{}.chunk{}", config.path, i));
+                    let chunk_file_path = Arc::new(format!("{}.chunk{}", config.path.as_ref().unwrap(), i));
                     let chunk = Chunk {
                         file_path: chunk_file_path.clone(),
                         range_download: true,
@@ -84,7 +85,7 @@ impl ChunkHub {
                         end: end_position,
                         valid: false,
                         version: config.remote_version,
-                        url: config.url.clone(),
+                        url: config.url.as_ref().unwrap().clone(),
                     };
                     let chunk = Arc::new(Mutex::new(chunk));
                     chunks.push(chunk);
