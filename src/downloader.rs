@@ -6,7 +6,7 @@ use tokio::spawn;
 use tokio::sync::Mutex;
 use crate::chunk_hub::ChunkHub;
 use crate::download_configuration::DownloadConfiguration;
-use crate::remote_file::RemoteFile;
+use crate::remote_file::{RemoteFile, RemoteFileInfo};
 
 #[derive(PartialEq, Clone)]
 pub enum DownloaderStatus {
@@ -15,6 +15,7 @@ pub enum DownloaderStatus {
     Download = 2,
     Archive = 3,
     Complete = 4,
+    Failed = 5,
 }
 
 impl Display for DownloaderStatus {
@@ -25,6 +26,7 @@ impl Display for DownloaderStatus {
             DownloaderStatus::Download => write!(f, "Download"),
             DownloaderStatus::Archive => write!(f, "Archive"),
             DownloaderStatus::Complete => write!(f, "Complete"),
+            DownloaderStatus::Failed => write!(f, "Failed"),
         }
     }
 }
@@ -65,6 +67,7 @@ impl Downloader {
             DownloaderStatus::Download => 2,
             DownloaderStatus::Archive => 3,
             DownloaderStatus::Complete => 4,
+            DownloaderStatus::Failed => 5,
         }
     }
 
@@ -74,6 +77,14 @@ impl Downloader {
 
     pub fn get_total_size(&self) -> u64 {
         self.config.blocking_lock().total_length
+    }
+
+    pub fn is_done(&self) -> bool {
+        return *self.download_status.blocking_lock() == DownloaderStatus::Complete || *self.download_status.blocking_lock() == DownloaderStatus::Failed;
+    }
+
+    pub fn is_error(&self) -> bool {
+        return *self.download_status.blocking_lock() == DownloaderStatus::Failed;
     }
 
     pub fn stop(&mut self) {
@@ -95,17 +106,16 @@ async fn async_start_download(
     }
 
     let mut remote_file = RemoteFile::new(config.lock().await.url.clone());
-    remote_file.head().await;
-
-    if options.lock().await.cancel {
-        return;
-    }
-
-    if let Some(remote_file_info) = remote_file.remote_file_info {
-        let mut config = config.lock().await;
-        config.remote_version = remote_file_info.last_modified_time;
-        config.support_range_download = remote_file_info.support_range_download;
-        config.total_length = remote_file_info.total_length;
+    let mut remote_file_info: Option<RemoteFileInfo> = None;
+    match remote_file.head().await {
+        Ok(value) => {
+            remote_file_info = Some(value);
+        }
+        Err(e) => {
+            println!("{}", e.to_string());
+            *status.lock().await = DownloaderStatus::Failed;
+            return;
+        }
     }
 
     if options.lock().await.cancel {
@@ -114,6 +124,17 @@ async fn async_start_download(
 
     {
         *status.lock().await = DownloaderStatus::Download;
+    }
+
+    if let Some(remote_file_info) = remote_file_info {
+        let mut config = config.lock().await;
+        config.remote_version = remote_file_info.last_modified_time;
+        config.support_range_download = remote_file_info.support_range_download;
+        config.total_length = remote_file_info.total_length;
+    }
+
+    if options.lock().await.cancel {
+        return;
     }
 
     let mut chunk_hub = ChunkHub::new(config.clone());
@@ -146,15 +167,22 @@ async fn async_start_download(
 
 #[cfg(test)]
 mod test {
+    use std::sync::{Arc};
     use std::thread;
+    use std::thread::sleep;
     use std::time::Duration;
     use tokio::runtime;
-    use tokio::time::{Instant, sleep};
+    use tokio::sync::Mutex;
+    use tokio::time::{Instant};
     use crate::download_configuration::DownloadConfiguration;
     use crate::downloader::{Downloader, DownloaderStatus};
 
-    #[tokio::test]
-    async fn test_downloader() {
+    #[test]
+    fn test_downloader() {
+        let url = "https://lan.sausage.xd.com/servers.txt".to_string();
+        let mut downloader = Downloader::new(DownloadConfiguration::from_url_path(url, "servers.txt".to_string()));
+        let mut downloader = Arc::new(Mutex::new(downloader));
+        let downloader_clone = downloader.clone();
         let handle = thread::spawn(move || {
             let rt = runtime::Builder::new_multi_thread()
                 .worker_threads(4)
@@ -164,29 +192,17 @@ mod test {
 
             rt.block_on(async {
                 let time = Instant::now();
-
-                //let url = "https://n17x06.xdcdn.net/media/SS6_CG_Weather_Kingdom.mp4".to_string();
-                //let mut downloader = Downloader::new(DownloadConfiguration::from_url_path(url, "SS6_CG_Weather_Kingdom.mp4".to_string()));
-                //downloader.start_download();
-//
-                //let mut last_progress = 0f32;
-                //while downloader.get_download_status().await != 4 {
-                //    let total_length = downloader.get_total_size().await as f32;
-                //    if total_length > 0f32 {
-                //        let size = downloader.get_downloaded_size().await as f32;
-                //        let progress = size / total_length;
-                //        if progress > last_progress {
-                //            println!("{}", progress);
-                //            last_progress = progress;
-                //        }
-                //    }
-//
-                //}
-
-                println!("took {}s", Instant::now().duration_since(time).as_secs());
+                downloader_clone.lock().await.start_download();
+                loop {}
             })
         });
 
-        handle.join().expect("");
+        while !downloader.blocking_lock().is_done() {
+
+        }
+
+        if downloader.blocking_lock().is_error() {
+            println!("error");
+        }
     }
 }

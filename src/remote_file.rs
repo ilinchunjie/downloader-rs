@@ -1,6 +1,8 @@
 use std::ops::Deref;
 use std::sync::Arc;
+use std::time::Duration;
 use chrono::DateTime;
+use reqwest::Error;
 use reqwest::header::{HeaderMap, HeaderValue};
 
 pub struct RemoteFileInfo {
@@ -42,23 +44,26 @@ impl RemoteFileInfo {
 
 pub struct RemoteFile {
     url: Arc<String>,
-    pub remote_file_info: Option<RemoteFileInfo>,
 }
 
 impl RemoteFile {
     pub fn new(url: Arc<String>) -> RemoteFile {
         RemoteFile {
             url,
-            remote_file_info: None,
         }
     }
 
-    pub async fn head(&mut self) {
+    pub async fn head(&mut self) -> Result<RemoteFileInfo, Error> {
         let client = reqwest::Client::new();
         let request = client.head(self.url.deref());
-        if let Ok(response) = request.send().await {
-            let headers = response.headers();
-            self.remote_file_info = Some(RemoteFileInfo::new(headers));
+        match request.send().await {
+            Ok(response) => {
+                let headers = response.headers();
+                Ok(RemoteFileInfo::new(headers))
+            }
+            Err(e) => {
+                return Err(e)
+            }
         }
     }
 }

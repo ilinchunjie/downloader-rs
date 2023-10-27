@@ -1,5 +1,4 @@
 mod download_handle;
-mod download_status;
 mod download_task;
 mod stream;
 mod downloader;
