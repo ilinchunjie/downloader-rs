@@ -1,10 +1,11 @@
 use std::io::Error;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::time::Instant;
 use crate::stream::Stream;
 
 pub struct DownloadHandle {
-    file_path: Arc<String>,
+    file_path: Arc<PathBuf>,
     downloaded_size : i64,
     download_size : i64,
     download_speed : f64,
@@ -13,7 +14,7 @@ pub struct DownloadHandle {
 }
 
 impl DownloadHandle {
-    pub fn new(file_path: Arc<String>) -> Self {
+    pub fn new(file_path: Arc<PathBuf>) -> Self {
         Self {
             file_path,
             stream: None,
@@ -24,9 +25,16 @@ impl DownloadHandle {
         }
     }
 
-    pub async fn setup(&mut self) {
-        let stream = Stream::new(&self.file_path).await;
-        self.stream = Some(stream);
+    pub async fn setup(&mut self) -> Result<(), std::io::Error> {
+        match Stream::new(self.file_path.as_path()).await {
+            Ok(stream) => {
+                self.stream = Some(stream);
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        }
+        Ok(())
     }
 
     pub async fn received_bytes_async(&mut self, buffer : &Vec<u8>) {

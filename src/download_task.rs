@@ -1,5 +1,7 @@
+use std::error::Error;
 use std::fmt::{Debug};
 use std::ops::Deref;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use futures::StreamExt;
 use reqwest::header::RANGE;
@@ -9,7 +11,7 @@ use crate::downloader::DownloadOptions;
 
 #[derive(Clone)]
 pub struct DownloadTaskConfiguration {
-    pub file_path: Arc<String>,
+    pub file_path: Arc<PathBuf>,
     pub url: Arc<String>,
     pub range_download: bool,
     pub range_start: u64,
@@ -34,7 +36,7 @@ impl DownloadTask {
         self.handle.get_downloaded_size()
     }
 
-    pub async fn start_download(&mut self, options: Arc<Mutex<DownloadOptions>>) {
+    pub async fn start_download(&mut self, options: Arc<Mutex<DownloadOptions>>) -> Result<(), Box<dyn Error + Send>> {
         let mut range_str = String::new();
         if self.config.range_download {
             if self.config.range_start < self.config.range_end {
@@ -51,29 +53,42 @@ impl DownloadTask {
         let result = request.send().await;
 
         if options.lock().await.cancel {
-            return;
+            return Ok(());
         }
 
-        if let Ok(response) = result {
-            if response.status().is_success() {
-                self.handle.setup().await;
+        match result {
+            Ok(response) => {
+                match response.error_for_status() {
+                    Ok(response) => {
+                        if let Err(e) = self.handle.setup().await {
+                            return Err(Box::new(e));
+                        }
 
-                let mut body = response.bytes_stream();
-                while let Some(chunk) = body.next().await {
-                    if options.lock().await.cancel {
-                        return;
+                        let mut body = response.bytes_stream();
+                        while let Some(chunk) = body.next().await {
+                            if options.lock().await.cancel {
+                                return Ok(());
+                            }
+                            match chunk {
+                                Ok(bytes) => {
+                                    let buffer = bytes.to_vec() as Vec<u8>;
+                                    options.lock().await.downloaded_size += buffer.len() as u64;
+                                    self.handle.received_bytes_async(&buffer).await;
+                                }
+                                Err(e) => {
+                                    return Err(Box::new(e));
+                                }
+                            }
+                        }
                     }
-                    match chunk {
-                        Ok(bytes) => {
-                            let buffer = bytes.to_vec() as Vec<u8>;
-                            options.lock().await.downloaded_size += buffer.len() as u64;
-                            self.handle.received_bytes_async(&buffer).await;
-                        }
-                        Err(e) => {
-                            println!("{}", e);
-                        }
+                    Err(e) => {
+                        return Err(Box::new(e));
                     }
                 }
+                Ok(())
+            }
+            Err(e) => {
+                return Err(Box::new(e));
             }
         }
     }

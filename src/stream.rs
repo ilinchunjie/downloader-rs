@@ -1,4 +1,6 @@
 use std::io::Error;
+use std::path::Path;
+use tokio::fs;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::AsyncWriteExt;
 
@@ -7,10 +9,28 @@ pub struct Stream {
 }
 
 impl Stream {
-    pub async fn new(path: &String) -> Stream {
-        let file = OpenOptions::new().create(true).write(true).append(true).open(&path).await.expect("文件创建失败");
-        Stream {
-            file,
+    pub async fn new(path: &Path) -> Result<Stream, Error> {
+        if let Some(directory) = path.parent() {
+            if !directory.exists() {
+                let result = fs::create_dir(directory).await;
+                if let Err(e) = result {
+                    return Err(e);
+                }
+            }
+        }
+        match OpenOptions::new().
+            create(true).
+            write(true).
+            append(true).
+            open(&path).await {
+            Ok(file) => {
+                Ok(Stream {
+                    file,
+                })
+            }
+            Err(e) => {
+                Err(e)
+            }
         }
     }
 

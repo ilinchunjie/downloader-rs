@@ -1,5 +1,7 @@
 use std::cell::RefCell;
+use std::error::Error;
 use std::ops::Deref;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc};
 use tokio::fs::{File, OpenOptions};
@@ -13,7 +15,7 @@ use crate::downloader::DownloadOptions;
 
 pub struct ChunkHub {
     config: Arc<Mutex<DownloadConfiguration>>,
-    file_paths: Option<Arc<Vec<Arc<String>>>>,
+    file_paths: Option<Arc<Vec<Arc<PathBuf>>>>,
     chunks: Option<Vec<Arc<Mutex<Chunk>>>>,
 }
 
@@ -26,8 +28,8 @@ impl ChunkHub {
         }
     }
 
-    pub fn start_download(&mut self, options: Arc<Mutex<DownloadOptions>>) -> Vec<JoinHandle<()>> {
-        let mut handles: Vec<JoinHandle<()>> = vec![];
+    pub fn start_download(&mut self, options: Arc<Mutex<DownloadOptions>>) -> Vec<JoinHandle<Result<(), Box<dyn Error + Send>>>> {
+        let mut handles: Vec<JoinHandle<Result<(), Box<dyn Error + Send>>>> = vec![];
         if let Some(chunks) = &mut self.chunks {
             for chunk in chunks {
                 let handle = spawn(start_download_chunks(chunk.clone(), options.clone()));
@@ -53,10 +55,10 @@ impl ChunkHub {
         }
 
         let mut chunks: Vec<Arc<Mutex<Chunk>>> = Vec::with_capacity(chunk_count as usize);
-        let mut file_paths: Vec<Arc<String>> = Vec::with_capacity(chunk_count as usize);
+        let mut file_paths: Vec<Arc<PathBuf>> = Vec::with_capacity(chunk_count as usize);
         match chunk_count {
             1 => {
-                let chunk_file_path = Arc::new(format!("{}.chunk", config.path.as_ref().unwrap()));
+                let chunk_file_path = Arc::new(PathBuf::from(format!("{}.chunk", config.path.as_ref().unwrap())));
                 let chunk = Chunk {
                     file_path: chunk_file_path.clone(),
                     range_download: config.support_range_download,
@@ -77,7 +79,7 @@ impl ChunkHub {
                     if i == chunk_count - 1 {
                         end_position = start_position + config.total_length % config.chunk_size - 1;
                     }
-                    let chunk_file_path = Arc::new(format!("{}.chunk{}", config.path.as_ref().unwrap(), i));
+                    let chunk_file_path = Arc::new(PathBuf::from(format!("{}.chunk{}", config.path.as_ref().unwrap(), i)));
                     let chunk = Chunk {
                         file_path: chunk_file_path.clone(),
                         range_download: true,
@@ -98,15 +100,16 @@ impl ChunkHub {
     }
 }
 
-async fn start_download_chunks(chunk: Arc<Mutex<Chunk>>, options: Arc<Mutex<DownloadOptions>>) {
+async fn start_download_chunks(chunk: Arc<Mutex<Chunk>>, options: Arc<Mutex<DownloadOptions>>) -> Result<(), Box<dyn Error + Send>> {
     let mut chunk = chunk.lock().await;
     chunk.validate(options.clone()).await;
     if !chunk.valid {
-        chunk.start_download(options.clone()).await;
+        return chunk.start_download(options.clone()).await
     }
+    Ok(())
 }
 
-async fn start_archive_chunks(output: Arc<String>, chunks: Arc<Vec<Arc<String>>>) {
+async fn start_archive_chunks(output: Arc<String>, chunks: Arc<Vec<Arc<PathBuf>>>) {
     let mut output_result = OpenOptions::new().create(true).write(true).open(output.deref()).await;
     if let Ok(output_file) = &mut output_result {
         for i in 0..chunks.len() {
@@ -121,7 +124,7 @@ async fn start_archive_chunks(output: Arc<String>, chunks: Arc<Vec<Arc<String>>>
 
         for i in 0..chunks.len() {
             fs::remove_file(chunks[i].deref()).await;
-            let meta_path = format!("{}.meta", chunks[i].deref());
+            let meta_path = format!("{}.meta", chunks[i].deref().to_str().unwrap());
             fs::remove_file(meta_path).await;
         }
     }

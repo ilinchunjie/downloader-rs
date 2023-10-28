@@ -82,6 +82,13 @@ impl DownloadService {
         return 0;
     }
 
+    pub fn get_download_is_done(&mut self, id: u64) -> bool {
+        if let Some(downloader) = self.downloaders.blocking_lock().get(&id) {
+            return downloader.blocking_lock().is_done();
+        }
+        return true;
+    }
+
     pub fn stop(&mut self) {
         *self.cancel.blocking_lock() = true;
     }
@@ -118,8 +125,7 @@ mod test {
         let mut downloader = Downloader::new(config);
         let id0 = service.add_downloader(downloader);
 
-        while service.get_download_status(id0) != 4 {
-            println!("file1->{}", service.get_downloaded_size(id0));
+        while !service.get_download_is_done(id0) {
         }
 
         service.stop();

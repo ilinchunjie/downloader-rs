@@ -141,7 +141,20 @@ async fn async_start_download(
     chunk_hub.set_file_chunks().await;
     let handles = chunk_hub.start_download(options.clone());
     for handle in handles {
-        handle.await;
+        match handle.await {
+            Ok(result) => {
+                if let Err(e) = result {
+                    eprintln!("{}", e.to_string());
+                    *status.lock().await = DownloaderStatus::Failed;
+                    return;
+                }
+            }
+            Err(e) => {
+                eprintln!("错误：{}", e);
+                *status.lock().await = DownloaderStatus::Failed;
+                return;
+            }
+        }
     }
 
     if options.lock().await.cancel {

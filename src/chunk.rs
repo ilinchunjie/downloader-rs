@@ -1,5 +1,6 @@
-use std::io::{Error};
+use std::error::Error;
 use std::ops::Deref;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc};
 use tokio::fs;
 use tokio::fs::OpenOptions;
@@ -9,7 +10,7 @@ use crate::download_task::{DownloadTaskConfiguration, DownloadTask};
 use crate::downloader::DownloadOptions;
 
 pub struct Chunk {
-    pub file_path: Arc<String>,
+    pub file_path: Arc<PathBuf>,
     pub url: Arc<String>,
     pub range_download: bool,
     pub start: u64,
@@ -19,24 +20,24 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    pub async fn start_download(&mut self, options: Arc<Mutex<DownloadOptions>>) {
+    pub async fn start_download(&mut self, options: Arc<Mutex<DownloadOptions>>) -> Result<(), Box<dyn Error + Send>> {
         if let Err(e) = self.save_chunk_version().await {
-            println!("{}", e);
+            return Err(Box::new(e));
         }
 
         let config = DownloadTaskConfiguration {
             file_path: self.file_path.clone(),
-            range_download : self.range_download,
-            range_start : self.start,
-            range_end : self.end,
-            url : self.url.clone(),
+            range_download: self.range_download,
+            range_start: self.start,
+            range_end: self.end,
+            url: self.url.clone(),
         };
         let mut task = DownloadTask::new(config);
-        task.start_download(options).await;
+        task.start_download(options).await
     }
 
-    pub async fn save_chunk_version(&mut self) -> Result<(), Error> {
-        let meta_path = format!("{}.meta", self.file_path);
+    pub async fn save_chunk_version(&mut self) -> Result<(), std::io::Error> {
+        let meta_path = format!("{}.meta", self.file_path.to_str().unwrap());
         let mut version_file_result = OpenOptions::new().create(true).write(true).open(meta_path).await;
         if let Ok(version_file) = &mut version_file_result {
             let bytes = self.version.to_le_bytes();
@@ -50,17 +51,15 @@ impl Chunk {
     }
 
     pub async fn get_local_version(&self) -> i64 {
-        let meta_path = format!("{}.meta", self.file_path);
+        let meta_path = format!("{}.meta", self.file_path.to_str().unwrap());
         let mut meta_file_result = OpenOptions::new().read(true).open(meta_path).await;
         let mut version = 0i64;
         match &mut meta_file_result {
             Ok(meta_file) => {
-                let mut buffer: Vec<u8> = vec![];
-                let result = meta_file.read_to_end(&mut buffer).await;
+                let mut buffer = [0u8; 8];
+                let result = meta_file.read_exact(&mut buffer).await;
                 if let Ok(length) = result {
-                    let mut i64_bytes = [0u8; 8];
-                    i64_bytes.copy_from_slice(&buffer);
-                    version = i64::from_le_bytes(i64_bytes);
+                    version = i64::from_le_bytes(buffer);
                 }
             }
             Err(e) => {
