@@ -6,6 +6,9 @@ use tokio::spawn;
 use tokio::sync::Mutex;
 use crate::chunk_hub::ChunkHub;
 use crate::download_configuration::DownloadConfiguration;
+use crate::download_handle::DownloadHandle;
+use crate::download_handle_file::DownloadHandleFile;
+use crate::download_handle_memory::DownloadHandleMemory;
 use crate::remote_file::{RemoteFile, RemoteFileInfo};
 
 #[derive(PartialEq, Clone)]
@@ -39,14 +42,23 @@ pub struct DownloadOptions {
 pub struct Downloader {
     config: Arc<Mutex<DownloadConfiguration>>,
     download_status: Arc<Mutex<DownloaderStatus>>,
+    download_handle: Arc<Mutex<DownloadHandle>>,
     options: Arc<Mutex<DownloadOptions>>,
 }
 
 impl Downloader {
     pub fn new(config: DownloadConfiguration) -> Downloader {
+        let download_in_memory = config.download_in_memory;
         let config = Arc::new(Mutex::new(config));
+        let mut download_handle: DownloadHandle;
+        if download_in_memory {
+            download_handle = DownloadHandle::DownloadHandleMemory(DownloadHandleMemory::new(config.clone()))
+        } else {
+            download_handle = DownloadHandle::DownloadHandleFile(DownloadHandleFile::new(config.clone()))
+        }
         let mut downloader = Downloader {
             config,
+            download_handle: Arc::new(Mutex::new(download_handle)),
             download_status: Arc::new(Mutex::new(DownloaderStatus::None)),
             options: Arc::new(Mutex::new(DownloadOptions {
                 downloaded_size: 0,
@@ -57,7 +69,11 @@ impl Downloader {
     }
 
     pub fn start_download(&mut self) {
-        spawn(async_start_download(self.config.clone(), self.options.clone(), self.download_status.clone()));
+        spawn(async_start_download(
+            self.config.clone(),
+            self.options.clone(),
+            self.download_status.clone(),
+            self.download_handle.clone()));
     }
 
     pub fn get_download_status(&self) -> i32 {
@@ -96,7 +112,8 @@ impl Downloader {
 async fn async_start_download(
     config: Arc<Mutex<DownloadConfiguration>>,
     options: Arc<Mutex<DownloadOptions>>,
-    status: Arc<Mutex<DownloaderStatus>>) {
+    status: Arc<Mutex<DownloaderStatus>>,
+    download_handle: Arc<Mutex<DownloadHandle>>) {
     if options.lock().await.cancel {
         return;
     }
@@ -138,8 +155,8 @@ async fn async_start_download(
     }
 
     let mut chunk_hub = ChunkHub::new(config.clone());
-    chunk_hub.set_file_chunks().await;
-    let handles = chunk_hub.start_download(options.clone());
+    chunk_hub.validate().await;
+    let handles = chunk_hub.start_download(options.clone(), download_handle.clone());
     for handle in handles {
         match handle.await {
             Ok(result) => {
@@ -155,18 +172,6 @@ async fn async_start_download(
                 return;
             }
         }
-    }
-
-    if options.lock().await.cancel {
-        return;
-    }
-
-    {
-        *status.lock().await = DownloaderStatus::Archive;
-    }
-
-    if let Some(handle) = chunk_hub.start_archive().await {
-        handle.await;
     }
 
     if options.lock().await.cancel {
@@ -214,9 +219,7 @@ mod test {
             })
         });
 
-        while !downloader.blocking_lock().is_done() {
-
-        }
+        while !downloader.blocking_lock().is_done() {}
 
         if downloader.blocking_lock().is_error() {
             println!("error");

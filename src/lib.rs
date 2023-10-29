@@ -8,3 +8,5 @@ mod chunk_hub;
 mod download_configuration;
 mod download_service;
 mod c;
+mod download_handle_file;
+mod download_handle_memory;
