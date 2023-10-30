@@ -45,4 +45,8 @@ impl DownloadHandleTrait for DownloadHandleMemory {
     fn get_downloaded_size(&self) -> u64 {
         return self.downloaded_size;
     }
+
+    fn update_downloaded_size(&mut self, length: u64) {
+        self.downloaded_size += length;
+    }
 }

@@ -71,6 +71,7 @@ impl ChunkHub {
                     valid: false,
                 };
                 chunk.validate().await;
+                chunk.set_downloaded_size().await;
                 let chunk = Arc::new(Mutex::new(chunk));
                 chunks.push(chunk);
             }
@@ -93,6 +94,7 @@ impl ChunkHub {
                         valid: false,
                     };
                     chunk.validate().await;
+                    chunk.set_downloaded_size().await;
                     let chunk = Arc::new(Mutex::new(chunk));
                     chunks.push(chunk);
                 }

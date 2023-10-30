@@ -10,14 +10,6 @@ pub struct Stream {
 
 impl Stream {
     pub async fn new(path: PathBuf) -> Result<Stream, Error> {
-        if let Some(directory) = path.parent() {
-            if !directory.exists() {
-                let result = fs::create_dir(directory).await;
-                if let Err(e) = result {
-                    return Err(e);
-                }
-            }
-        }
         match OpenOptions::new().
             create(true).
             write(true).

@@ -122,11 +122,13 @@ mod test {
         let config = DownloadConfiguration::new()
             .set_url(url)
             .set_file_path("temp/SS6_CG_Weather_Kingdom.mp4".to_string())
+            .create_dir(true)
             .build();
         let mut downloader = Downloader::new(config);
         let id0 = service.add_downloader(downloader);
 
         while !service.get_download_is_done(id0) {
+            println!("{}", service.get_downloaded_size(id0));
         }
 
         service.stop();

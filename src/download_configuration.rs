@@ -1,3 +1,6 @@
+use std::fs;
+use std::ops::Deref;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub struct DownloadConfiguration {
@@ -40,6 +43,19 @@ impl DownloadConfigurationBuilder {
 
     pub fn set_chunk_size(mut self, chunk_size: u64) -> DownloadConfigurationBuilder {
         self.config.chunk_size = chunk_size;
+        self
+    }
+
+    pub fn create_dir(mut self, create: bool) -> DownloadConfigurationBuilder {
+        let path = Path::new(self.config.path.as_ref().unwrap().deref());
+        if let Some(directory) = path.parent() {
+            if !directory.exists() {
+                let result = fs::create_dir(directory);
+                if let Err(e) = result {
+                    panic!("{}", e);
+                }
+            }
+        }
         self
     }
 

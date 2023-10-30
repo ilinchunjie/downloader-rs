@@ -22,7 +22,6 @@ impl DownloadHandleFile {
         }
     }
 
-
     pub async fn flush_async(&mut self) -> Result<(), std::io::Error> {
         if let Some(stream) = &mut self.stream {
             return stream.flush_async().await;
@@ -61,5 +60,9 @@ impl DownloadHandleTrait for DownloadHandleFile {
 
     fn get_downloaded_size(&self) -> u64 {
         return self.downloaded_size;
+    }
+
+    fn update_downloaded_size(&mut self, length: u64) {
+        self.downloaded_size += length;
     }
 }

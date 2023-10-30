@@ -55,7 +55,20 @@ impl Chunk {
         Ok(())
     }
 
+    pub async fn set_downloaded_size(&mut self) {
+        match self.download_handle.lock().await.deref_mut() {
+            DownloadHandle::File(download_handle) => {
+                download_handle.update_downloaded_size(self.position - self.start);
+            }
+            DownloadHandle::Memory(download_handle) => {
+                download_handle.update_downloaded_size(self.position - self.start);
+            }
+        }
+    }
+
     pub async fn validate(&mut self) {
+        self.position = 0;
+
         let chunk_metadata = self.chunk_metadata.lock().await;
         if chunk_metadata.version == 0 || chunk_metadata.version != self.version {
             self.valid = false;
@@ -83,6 +96,7 @@ impl Chunk {
             println!("chunk_length > remote_length");
             return;
         }
+
         self.position = self.start + chunk_length;
         self.valid = self.position == self.end + 1;
 
