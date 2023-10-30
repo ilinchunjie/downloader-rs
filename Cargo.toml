@@ -1,6 +1,6 @@
 [package]
 name = "downloader-rs"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 description = "A simple way to download files via HTTP/HTTPS"
