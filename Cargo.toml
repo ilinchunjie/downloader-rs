@@ -19,9 +19,6 @@ futures = { version = "0.3.28" }
 chrono = { version = "0.4.31" }
 async-trait = { version = "0.1.74" }
 
-[lib]
-crate-type = ["cdylib", "staticlib"]
-
 [profile.dev]
 debug = true
 
