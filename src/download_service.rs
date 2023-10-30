@@ -1,10 +1,11 @@
 use std::collections::{HashMap, VecDeque};
-use std::ops::DerefMut;
+use std::ops::{Deref, DerefMut};
 use std::sync::{Arc};
 use std::thread;
 use std::thread::JoinHandle;
 use tokio::runtime;
 use tokio::sync::Mutex;
+use crate::download_handle::DownloadHandle;
 use crate::downloader::Downloader;
 
 type Downloaders = HashMap<u64, Arc<Mutex<Downloader>>>;
@@ -75,6 +76,13 @@ impl DownloadService {
         return 0;
     }
 
+    pub fn get_download_text(&mut self, id: u64) -> String {
+        if let Some(downloader) = self.downloaders.blocking_lock().get(&id) {
+            return downloader.blocking_lock().text();
+        }
+        return String::new();
+    }
+
     pub fn get_download_status(&mut self, id: u64) -> i32 {
         if let Some(downloader) = self.downloaders.blocking_lock().get(&id) {
             return downloader.blocking_lock().get_download_status();
@@ -103,6 +111,7 @@ mod test {
     use std::time::Duration;
     use tokio::sync::Mutex;
     use crate::download_configuration::DownloadConfiguration;
+    use crate::download_handle::DownloadHandle;
     use crate::download_service::{Downloaders, DownloadService};
     use crate::downloader::{Downloader};
 
@@ -118,11 +127,10 @@ mod test {
 
         service.start_service();
 
-        let url = "https://n17x06.xdcdn.net/media/SS6_CG_Weather_Kingdom.mp4".to_string();
+        let url = "https://lan.sausage.xd.com/servers.txt".to_string();
         let config = DownloadConfiguration::new()
             .set_url(url)
-            .set_file_path("temp/SS6_CG_Weather_Kingdom.mp4".to_string())
-            .create_dir(true)
+            .set_download_in_memory()
             .build();
         let mut downloader = Downloader::new(config);
         let id0 = service.add_downloader(downloader);
@@ -130,6 +138,8 @@ mod test {
         while !service.get_download_is_done(id0) {
             println!("{}", service.get_downloaded_size(id0));
         }
+
+        println!("{}", service.get_download_text(id0));
 
         service.stop();
     }

@@ -36,6 +36,11 @@ impl DownloadConfigurationBuilder {
         self
     }
 
+    pub fn set_download_in_memory(mut self) -> DownloadConfigurationBuilder {
+        self.config.download_in_memory = true;
+        self
+    }
+
     pub fn set_chunk_download(mut self, chunk_download: bool) -> DownloadConfigurationBuilder {
         self.config.chunk_download = chunk_download;
         self
@@ -68,7 +73,7 @@ impl DownloadConfigurationBuilder {
             panic!("未设置下载地址");
         }
 
-        if self.config.path == None {
+        if !self.config.download_in_memory && self.config.path == None {
             panic!("未设置下载路径");
         }
 

@@ -41,7 +41,7 @@ pub struct DownloadOptions {
 pub struct Downloader {
     config: Arc<Mutex<DownloadConfiguration>>,
     download_status: Arc<Mutex<DownloaderStatus>>,
-    download_handle: Arc<Mutex<DownloadHandle>>,
+    pub download_handle: Arc<Mutex<DownloadHandle>>,
     options: Arc<Mutex<DownloadOptions>>,
 }
 
@@ -86,12 +86,23 @@ impl Downloader {
     }
 
     pub fn get_downloaded_size(&self) -> u64 {
-        match self.download_handle.blocking_lock().deref_mut() {
+        return match self.download_handle.blocking_lock().deref_mut() {
             DownloadHandle::File(download_handle) => {
-                return download_handle.get_downloaded_size();
+                download_handle.get_downloaded_size()
             }
             DownloadHandle::Memory(download_handle) => {
-                return download_handle.get_downloaded_size();
+                download_handle.get_downloaded_size()
+            }
+        }
+    }
+
+    pub fn text(&self) -> String {
+        return match self.download_handle.blocking_lock().deref_mut() {
+            DownloadHandle::File(download_handle) => {
+                String::new()
+            }
+            DownloadHandle::Memory(download_handle) => {
+                download_handle.text()
             }
         }
     }

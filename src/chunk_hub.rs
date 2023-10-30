@@ -55,7 +55,6 @@ impl ChunkHub {
         let chunk_metadata = ChunkMetadata::get_chunk_metadata(chunk_metadata_path, chunk_count).await;
         let chunk_metadata = Arc::new(Mutex::new(chunk_metadata));
 
-
         let mut chunks: Vec<Arc<Mutex<Chunk>>> = Vec::with_capacity(chunk_count as usize);
         match chunk_count {
             1 => {
@@ -70,7 +69,9 @@ impl ChunkHub {
                     version: config.remote_version,
                     valid: false,
                 };
-                chunk.validate().await;
+                if !config.download_in_memory {
+                    chunk.validate().await;
+                }
                 chunk.set_downloaded_size().await;
                 let chunk = Arc::new(Mutex::new(chunk));
                 chunks.push(chunk);
@@ -93,7 +94,9 @@ impl ChunkHub {
                         version: config.remote_version,
                         valid: false,
                     };
-                    chunk.validate().await;
+                    if !config.download_in_memory {
+                        chunk.validate().await;
+                    }
                     chunk.set_downloaded_size().await;
                     let chunk = Arc::new(Mutex::new(chunk));
                     chunks.push(chunk);
