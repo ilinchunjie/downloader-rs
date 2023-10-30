@@ -97,6 +97,7 @@ impl DownloadService {
 #[cfg(test)]
 mod test {
     use std::collections::VecDeque;
+    use std::process::id;
     use std::sync::Arc;
     use std::thread::sleep;
     use std::time::Duration;

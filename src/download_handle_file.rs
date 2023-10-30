@@ -1,9 +1,10 @@
+use std::error::Error;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use crate::download_configuration::DownloadConfiguration;
-use crate::download_handle::DownloadHandle;
+use crate::download_handle::{DownloadHandle, DownloadHandleTrait};
 use crate::stream::Stream;
 
 pub struct DownloadHandleFile {
@@ -28,29 +29,37 @@ impl DownloadHandleFile {
         }
         Ok(())
     }
+}
 
-    pub async fn setup(&mut self) -> Result<(), std::io::Error> {
+#[async_trait::async_trait]
+impl DownloadHandleTrait for DownloadHandleFile {
+    async fn setup(&mut self) -> Result<(), Box<dyn Error + Send>> {
         let path = PathBuf::from(self.config.lock().await.path.as_ref().unwrap().deref());
         match Stream::new(path).await {
             Ok(stream) => {
                 self.stream = Some(stream);
             }
             Err(e) => {
-                return Err(e);
+                return Err(Box::new(e));
             }
         }
         Ok(())
     }
 
-    pub async fn received_bytes_async(&mut self, buffer: &Vec<u8>) -> Result<(), std::io::Error> {
+    async fn received_bytes_async(&mut self, position: u64, buffer: &Vec<u8>) -> Result<(), Box<dyn Error + Send>> {
         self.downloaded_size += buffer.len() as u64;
         if let Some(stream) = &mut self.stream {
-            return stream.write_async(buffer).await
+            if let Err(e) = stream.seek_async(position).await {
+                return Err(Box::new(e));
+            }
+            if let Err(e) = stream.write_async(buffer).await {
+                return Err(Box::new(e));
+            }
         }
         Ok(())
     }
 
-    pub fn get_downloaded_size(&mut self) -> u64 {
+    fn get_downloaded_size(&self) -> u64 {
         return self.downloaded_size;
     }
 }

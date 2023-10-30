@@ -1,8 +1,8 @@
-use std::io::Error;
+use std::io::{Error, SeekFrom};
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::fs::{File, OpenOptions};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncSeek, AsyncSeekExt, AsyncWriteExt};
 
 pub struct Stream {
     file: File,
@@ -32,6 +32,10 @@ impl Stream {
                 Err(e)
             }
         }
+    }
+
+    pub async fn seek_async(&mut self, position: u64) -> Result<u64, Error> {
+        self.file.seek(SeekFrom::Start(position)).await
     }
 
     pub async fn write_async(&mut self, buffer: &Vec<u8>) -> Result<(), Error> {

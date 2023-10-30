@@ -1,12 +1,12 @@
 use std::fmt::{Display, Formatter, write};
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::sync::{Arc};
 use bytes::Buf;
 use tokio::spawn;
 use tokio::sync::Mutex;
 use crate::chunk_hub::ChunkHub;
 use crate::download_configuration::DownloadConfiguration;
-use crate::download_handle::DownloadHandle;
+use crate::download_handle::{DownloadHandle, DownloadHandleTrait};
 use crate::download_handle_file::DownloadHandleFile;
 use crate::download_handle_memory::DownloadHandleMemory;
 use crate::remote_file::{RemoteFile, RemoteFileInfo};
@@ -36,7 +36,6 @@ impl Display for DownloaderStatus {
 
 pub struct DownloadOptions {
     pub cancel: bool,
-    pub downloaded_size: u64,
 }
 
 pub struct Downloader {
@@ -52,16 +51,15 @@ impl Downloader {
         let config = Arc::new(Mutex::new(config));
         let mut download_handle: DownloadHandle;
         if download_in_memory {
-            download_handle = DownloadHandle::DownloadHandleMemory(DownloadHandleMemory::new(config.clone()))
+            download_handle = DownloadHandle::Memory(DownloadHandleMemory::new(config.clone()))
         } else {
-            download_handle = DownloadHandle::DownloadHandleFile(DownloadHandleFile::new(config.clone()))
+            download_handle = DownloadHandle::File(DownloadHandleFile::new(config.clone()))
         }
         let mut downloader = Downloader {
             config,
             download_handle: Arc::new(Mutex::new(download_handle)),
             download_status: Arc::new(Mutex::new(DownloaderStatus::None)),
             options: Arc::new(Mutex::new(DownloadOptions {
-                downloaded_size: 0,
                 cancel: false,
             })),
         };
@@ -88,7 +86,14 @@ impl Downloader {
     }
 
     pub fn get_downloaded_size(&self) -> u64 {
-        self.options.blocking_lock().downloaded_size
+        match self.download_handle.blocking_lock().deref_mut() {
+            DownloadHandle::File(download_handle) => {
+                return download_handle.get_downloaded_size();
+            }
+            DownloadHandle::Memory(download_handle) => {
+                return download_handle.get_downloaded_size();
+            }
+        }
     }
 
     pub fn get_total_size(&self) -> u64 {
@@ -120,6 +125,7 @@ async fn async_start_download(
 
     {
         *status.lock().await = DownloaderStatus::Head;
+        println!("{}", *status.lock().await);
     }
 
     let mut remote_file = RemoteFile::new(config.lock().await.url.as_ref().unwrap().clone());
@@ -141,6 +147,7 @@ async fn async_start_download(
 
     {
         *status.lock().await = DownloaderStatus::Download;
+        println!("{}", *status.lock().await);
     }
 
     if let Some(remote_file_info) = remote_file_info {
@@ -154,20 +161,25 @@ async fn async_start_download(
         return;
     }
 
+    println!("start chunk");
+
     let mut chunk_hub = ChunkHub::new(config.clone());
-    chunk_hub.validate().await;
-    let handles = chunk_hub.start_download(options.clone(), download_handle.clone());
+    chunk_hub.validate(download_handle.clone()).await;
+
+    println!("chunk_hub validate");
+
+    let handles = chunk_hub.start_download(options.clone());
     for handle in handles {
         match handle.await {
             Ok(result) => {
                 if let Err(e) = result {
-                    eprintln!("{}", e.to_string());
+                    println!("{}", e.to_string());
                     *status.lock().await = DownloaderStatus::Failed;
                     return;
                 }
             }
             Err(e) => {
-                eprintln!("错误：{}", e);
+                println!("错误：{}", e);
                 *status.lock().await = DownloaderStatus::Failed;
                 return;
             }
