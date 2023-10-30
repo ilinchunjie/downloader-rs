@@ -70,11 +70,11 @@ impl DownloadConfigurationBuilder {
 
     fn validate(self) -> DownloadConfiguration {
         if self.config.url == None {
-            panic!("未设置下载地址");
+            panic!("Download address not configured.");
         }
 
         if !self.config.download_in_memory && self.config.path == None {
-            panic!("未设置下载路径");
+            panic!("No download path specified.");
         }
 
         self.config

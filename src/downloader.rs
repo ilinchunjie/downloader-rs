@@ -136,7 +136,6 @@ async fn async_start_download(
 
     {
         *status.lock().await = DownloaderStatus::Head;
-        println!("{}", *status.lock().await);
     }
 
     let mut remote_file = RemoteFile::new(config.lock().await.url.as_ref().unwrap().clone());
@@ -146,7 +145,6 @@ async fn async_start_download(
             remote_file_info = Some(value);
         }
         Err(e) => {
-            println!("{}", e.to_string());
             *status.lock().await = DownloaderStatus::Failed;
             return;
         }
@@ -158,7 +156,6 @@ async fn async_start_download(
 
     {
         *status.lock().await = DownloaderStatus::Download;
-        println!("{}", *status.lock().await);
     }
 
     if let Some(remote_file_info) = remote_file_info {
@@ -172,25 +169,19 @@ async fn async_start_download(
         return;
     }
 
-    println!("start chunk");
-
     let mut chunk_hub = ChunkHub::new(config.clone());
     chunk_hub.validate(download_handle.clone()).await;
-
-    println!("chunk_hub validate");
 
     let handles = chunk_hub.start_download(options.clone());
     for handle in handles {
         match handle.await {
             Ok(result) => {
                 if let Err(e) = result {
-                    println!("{}", e.to_string());
                     *status.lock().await = DownloaderStatus::Failed;
                     return;
                 }
             }
             Err(e) => {
-                println!("错误：{}", e);
                 *status.lock().await = DownloaderStatus::Failed;
                 return;
             }
@@ -203,49 +194,5 @@ async fn async_start_download(
 
     {
         *status.lock().await = DownloaderStatus::Complete;
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use std::sync::{Arc};
-    use std::thread;
-    use std::thread::sleep;
-    use std::time::Duration;
-    use tokio::runtime;
-    use tokio::sync::Mutex;
-    use tokio::time::{Instant};
-    use crate::download_configuration::DownloadConfiguration;
-    use crate::downloader::{Downloader, DownloaderStatus};
-
-    #[test]
-    fn test_downloader() {
-        let url = "https://lan.sausage.xd.com/servers.txt".to_string();
-        let config = DownloadConfiguration::new()
-            .set_url(url)
-            .set_file_path("servers.txt".to_string())
-            .build();
-        let mut downloader = Downloader::new(config);
-        let mut downloader = Arc::new(Mutex::new(downloader));
-        let downloader_clone = downloader.clone();
-        let handle = thread::spawn(move || {
-            let rt = runtime::Builder::new_multi_thread()
-                .worker_threads(4)
-                .enable_all()
-                .build()
-                .expect("创建失败");
-
-            rt.block_on(async {
-                let time = Instant::now();
-                downloader_clone.lock().await.start_download();
-                loop {}
-            })
-        });
-
-        while !downloader.blocking_lock().is_done() {}
-
-        if downloader.blocking_lock().is_error() {
-            println!("error");
-        }
     }
 }

@@ -4,7 +4,6 @@ mod stream;
 mod downloader;
 mod remote_file;
 mod chunk;
-
 mod chunk_metadata;
 mod chunk_hub;
 mod download_configuration;

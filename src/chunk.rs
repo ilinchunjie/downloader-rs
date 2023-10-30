@@ -73,20 +73,17 @@ impl Chunk {
         let chunk_metadata = self.chunk_metadata.as_mut().unwrap().lock().await;
         if chunk_metadata.version == 0 || chunk_metadata.version != self.version {
             self.valid = false;
-            println!("version != self.version");
             return;
         }
 
         if chunk_metadata.chunk_positions.len() <= self.index as usize {
             self.valid = false;
-            println!("chunk_positions.len() <= chunk_index");
             return;
         }
 
         let position = chunk_metadata.chunk_positions.get(self.index as usize).unwrap();
         if position == &0 {
             self.valid = false;
-            println!("position == 0");
             return;
         }
 
@@ -94,14 +91,11 @@ impl Chunk {
         let remote_length = self.end - self.start + 1;
         if chunk_length > remote_length {
             self.valid = false;
-            println!("chunk_length > remote_length");
             return;
         }
 
         self.position = self.start + chunk_length;
         self.valid = self.position == self.end + 1;
-
-        println!("valid {}", self.valid);
     }
 }
 
