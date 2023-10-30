@@ -1,9 +1,9 @@
 [package]
 name = "downloader-rs"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 license = "MIT"
-description = "A simple way to download files via HTTP/HTTPS"
+description = "a simple file downloader for rust"
 homepage = "https://github.com/ilinchunjie/downloader-rs"
 documentation = "https://github.com/ilinchunjie/downloader-rs"
 repository = "https://github.com/ilinchunjie/downloader-rs"
