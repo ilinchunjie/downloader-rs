@@ -136,7 +136,6 @@ mod test {
         let id0 = service.add_downloader(downloader);
 
         while !service.get_download_is_done(id0) {
-            println!("{}", service.get_downloaded_size(id0));
         }
 
         println!("{}", service.get_download_text(id0));

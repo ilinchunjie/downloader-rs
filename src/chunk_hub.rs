@@ -10,6 +10,7 @@ use crate::chunk::{Chunk};
 use crate::chunk_metadata::ChunkMetadata;
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_handle::DownloadHandle;
+use crate::downloader::DownloaderStatus::Archive;
 use crate::downloader::DownloadOptions;
 
 pub struct ChunkHub {
@@ -43,6 +44,53 @@ impl ChunkHub {
         return handles;
     }
 
+    fn from_file_chunk(
+        &self,
+        download_handle: Arc<Mutex<DownloadHandle>>,
+        chunk_metadata: Arc<Mutex<ChunkMetadata>>,
+        range_download: bool,
+        start: u64,
+        end: u64,
+        position: u64,
+        index: u16,
+        version: i64,
+        valid: bool) -> Chunk {
+        Chunk {
+            download_handle,
+            chunk_metadata: Some(chunk_metadata),
+            range_download,
+            start,
+            end,
+            position,
+            index,
+            version,
+            valid,
+        }
+    }
+
+    fn from_memory_chunk(
+        &self,
+        download_handle: Arc<Mutex<DownloadHandle>>,
+        range_download: bool,
+        start: u64,
+        end: u64,
+        position: u64,
+        index: u16,
+        version: i64,
+        valid: bool) -> Chunk {
+        Chunk {
+            download_handle,
+            chunk_metadata: None,
+            range_download,
+            start,
+            end,
+            position,
+            index,
+            version,
+            valid,
+        }
+    }
+
     pub async fn validate(&mut self, download_handle: Arc<Mutex<DownloadHandle>>) {
         self.chunks = None;
         let config = self.config.lock().await;
@@ -51,25 +99,24 @@ impl ChunkHub {
             chunk_count = (config.total_length as f64 / config.chunk_size as f64).ceil() as u16;
         }
 
-        let chunk_metadata_path = Arc::new(PathBuf::from(format!("{}.chunk.meta", config.path.as_ref().unwrap().deref())));
-        let chunk_metadata = ChunkMetadata::get_chunk_metadata(chunk_metadata_path, chunk_count).await;
-        let chunk_metadata = Arc::new(Mutex::new(chunk_metadata));
+        let mut chunk_metadata: Option<ChunkMetadata>;
+        if config.download_in_memory {
+            chunk_metadata = None;
+        } else {
+            let chunk_metadata_path = Arc::new(PathBuf::from(format!("{}.temp.meta", config.path.as_ref().unwrap().deref())));
+            let metadata = ChunkMetadata::get_chunk_metadata(chunk_metadata_path, chunk_count).await;
+            chunk_metadata = Some(metadata);
+        }
 
         let mut chunks: Vec<Arc<Mutex<Chunk>>> = Vec::with_capacity(chunk_count as usize);
         match chunk_count {
             1 => {
-                let mut chunk = Chunk {
-                    download_handle: download_handle.clone(),
-                    chunk_metadata: chunk_metadata.clone(),
-                    range_download: config.support_range_download,
-                    start: 0,
-                    end: config.total_length - 1,
-                    position: 0,
-                    index: 0,
-                    version: config.remote_version,
-                    valid: false,
-                };
-                if !config.download_in_memory {
+                let mut chunk: Chunk;
+                if config.download_in_memory {
+                    chunk = self.from_memory_chunk(download_handle.clone(), config.support_range_download, 0, config.total_length - 1, 0, 0, config.remote_version, false);
+                } else {
+                    let chunk_metadata = Arc::new(Mutex::new(chunk_metadata.unwrap()));
+                    chunk = self.from_file_chunk(download_handle.clone(), chunk_metadata, config.support_range_download, 0, config.total_length - 1, 0, 0, config.remote_version, false);
                     chunk.validate().await;
                 }
                 chunk.set_downloaded_size().await;
@@ -77,24 +124,19 @@ impl ChunkHub {
                 chunks.push(chunk);
             }
             _ => {
+                let chunk_metadata = Arc::new(Mutex::new(chunk_metadata.unwrap()));
                 for i in 0..chunk_count {
                     let start_position = (i as u64 * config.chunk_size) as u64;
                     let mut end_position = start_position + config.chunk_size - 1;
                     if i == chunk_count - 1 {
                         end_position = start_position + config.total_length % config.chunk_size - 1;
                     }
-                    let mut chunk = Chunk {
-                        download_handle: download_handle.clone(),
-                        chunk_metadata: chunk_metadata.clone(),
-                        range_download: true,
-                        start: start_position,
-                        end: end_position,
-                        position: start_position,
-                        index: i,
-                        version: config.remote_version,
-                        valid: false,
-                    };
-                    if !config.download_in_memory {
+
+                    let mut chunk: Chunk;
+                    if config.download_in_memory {
+                        chunk = self.from_memory_chunk(download_handle.clone(), true, start_position, end_position, start_position, i, config.remote_version, false);
+                    } else {
+                        chunk = self.from_file_chunk(download_handle.clone(), chunk_metadata.clone(), true, start_position, end_position, start_position, i, config.remote_version, false);
                         chunk.validate().await;
                     }
                     chunk.set_downloaded_size().await;

@@ -98,7 +98,7 @@ impl Downloader {
 
     pub fn text(&self) -> String {
         return match self.download_handle.blocking_lock().deref_mut() {
-            DownloadHandle::File(download_handle) => {
+            DownloadHandle::File(_) => {
                 String::new()
             }
             DownloadHandle::Memory(download_handle) => {

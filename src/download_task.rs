@@ -55,10 +55,7 @@ impl DownloadTask {
             Ok(response) => {
                 match response.error_for_status() {
                     Ok(response) => {
-                        if let Err(e) = download_chunk.lock().await.setup().await {
-                            return Err(e);
-                        }
-
+                        download_chunk.lock().await.setup().await?;
                         let mut body = response.bytes_stream();
                         while let Some(chunk) = body.next().await {
                             if options.lock().await.cancel {
@@ -67,9 +64,7 @@ impl DownloadTask {
                             match chunk {
                                 Ok(bytes) => {
                                     let buffer = bytes.to_vec() as Vec<u8>;
-                                    if let Err(e) = download_chunk.lock().await.received_bytes_async(&buffer).await {
-                                        return Err(e);
-                                    }
+                                    download_chunk.lock().await.received_bytes_async(&buffer).await?
                                 }
                                 Err(e) => {
                                     return Err(Box::new(e));

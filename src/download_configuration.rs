@@ -51,7 +51,7 @@ impl DownloadConfigurationBuilder {
         self
     }
 
-    pub fn create_dir(mut self, create: bool) -> DownloadConfigurationBuilder {
+    pub fn create_dir(mut self) -> DownloadConfigurationBuilder {
         let path = Path::new(self.config.path.as_ref().unwrap().deref());
         if let Some(directory) = path.parent() {
             if !directory.exists() {

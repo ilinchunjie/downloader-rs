@@ -9,7 +9,7 @@ use crate::downloader::DownloadOptions;
 
 pub struct Chunk {
     pub download_handle: Arc<Mutex<DownloadHandle>>,
-    pub chunk_metadata: Arc<Mutex<ChunkMetadata>>,
+    pub chunk_metadata: Option<Arc<Mutex<ChunkMetadata>>>,
     pub range_download: bool,
     pub start: u64,
     pub end: u64,
@@ -21,9 +21,9 @@ pub struct Chunk {
 
 impl Chunk {
     pub async fn setup(&mut self) -> Result<(), Box<dyn Error + Send>> {
-        self.chunk_metadata.lock().await.update_chunk_version(self.version).await;
         match self.download_handle.lock().await.deref_mut() {
             DownloadHandle::File(download_handle) => {
+                self.chunk_metadata.as_mut().unwrap().lock().await.update_chunk_version(self.version).await;
                 if let Err(e) = download_handle.setup().await {
                     return Err(e);
                 }
@@ -44,12 +44,13 @@ impl Chunk {
                     return Err(e);
                 }
                 self.position += buffer.len() as u64;
-                self.chunk_metadata.lock().await.update_chunk_position(self.position, self.index).await;
+                self.chunk_metadata.as_mut().unwrap().lock().await.update_chunk_position(self.position, self.index).await;
             }
             DownloadHandle::Memory(download_handle) => {
                 if let Err(e) = download_handle.received_bytes_async(self.position, buffer).await {
                     return Err(e);
                 }
+                self.position += buffer.len() as u64;
             }
         }
         Ok(())
@@ -69,7 +70,7 @@ impl Chunk {
     pub async fn validate(&mut self) {
         self.position = 0;
 
-        let chunk_metadata = self.chunk_metadata.lock().await;
+        let chunk_metadata = self.chunk_metadata.as_mut().unwrap().lock().await;
         if chunk_metadata.version == 0 || chunk_metadata.version != self.version {
             self.valid = false;
             println!("version != self.version");
