@@ -19,6 +19,7 @@ pub enum DownloaderStatus {
     Archive = 3,
     Complete = 4,
     Failed = 5,
+    Stop = 6
 }
 
 impl Display for DownloaderStatus {
@@ -30,6 +31,7 @@ impl Display for DownloaderStatus {
             DownloaderStatus::Archive => write!(f, "Archive"),
             DownloaderStatus::Complete => write!(f, "Complete"),
             DownloaderStatus::Failed => write!(f, "Failed"),
+            DownloaderStatus::Stop => write!(f, "Stop"),
         }
     }
 }
@@ -82,6 +84,7 @@ impl Downloader {
             DownloaderStatus::Archive => 3,
             DownloaderStatus::Complete => 4,
             DownloaderStatus::Failed => 5,
+            DownloaderStatus::Stop => 6
         }
     }
 
@@ -112,7 +115,17 @@ impl Downloader {
     }
 
     pub fn is_done(&self) -> bool {
-        return *self.download_status.blocking_lock() == DownloaderStatus::Complete || *self.download_status.blocking_lock() == DownloaderStatus::Failed;
+        return *self.download_status.blocking_lock() == DownloaderStatus::Complete
+            || *self.download_status.blocking_lock() == DownloaderStatus::Failed
+            || *self.download_status.blocking_lock() == DownloaderStatus::Stop;
+    }
+
+    pub fn is_stop(&self) -> bool {
+        return *self.download_status.blocking_lock() == DownloaderStatus::Stop;
+    }
+
+    pub async fn is_stop_async(&self) -> bool {
+        return *self.download_status.lock().await == DownloaderStatus::Stop;
     }
 
     pub fn is_error(&self) -> bool {
@@ -121,7 +134,7 @@ impl Downloader {
 
     pub fn stop(&mut self) {
         self.options.blocking_lock().cancel = true;
-        *self.download_status.blocking_lock() = DownloaderStatus::None;
+        *self.download_status.blocking_lock() = DownloaderStatus::Stop;
     }
 }
 

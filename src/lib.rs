@@ -11,3 +11,4 @@ pub mod download_configuration;
 pub mod download_service;
 pub mod downloader;
 pub mod download_handle;
+mod download_operation;

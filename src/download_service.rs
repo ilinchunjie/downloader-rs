@@ -1,29 +1,26 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{VecDeque};
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc};
 use std::thread;
 use std::thread::JoinHandle;
 use tokio::runtime;
 use tokio::sync::Mutex;
-use crate::download_handle::DownloadHandle;
+use crate::download_configuration::DownloadConfiguration;
+use crate::download_operation::DownloadOperation;
 use crate::downloader::Downloader;
 
-type Downloaders = HashMap<u64, Arc<Mutex<Downloader>>>;
+type DownloaderQueue = VecDeque<Arc<Mutex<Downloader>>>;
 
 pub struct DownloadService {
-    instance_id: u64,
     cancel: Arc<Mutex<bool>>,
-    download_queue: Arc<Mutex<VecDeque<u64>>>,
-    downloaders: Arc<Mutex<Downloaders>>,
+    download_queue: Arc<Mutex<DownloaderQueue>>,
     thread_handle: Option<JoinHandle<()>>,
 }
 
 impl DownloadService {
     pub fn new() -> Self {
         Self {
-            instance_id: 0u64,
-            download_queue: Arc::new(Mutex::new(VecDeque::new())),
-            downloaders: Arc::new(Mutex::new(Downloaders::new())),
+            download_queue: Arc::new(Mutex::new(DownloaderQueue::new())),
             thread_handle: None,
             cancel: Arc::new(Mutex::new(false)),
         }
@@ -31,7 +28,6 @@ impl DownloadService {
 
     pub fn start_service(&mut self) {
         let cancel = self.cancel.clone();
-        let downloaders = self.downloaders.clone();
         let queue = self.download_queue.clone();
         let handle = thread::spawn(move || {
             let rt = runtime::Builder::new_multi_thread()
@@ -42,10 +38,13 @@ impl DownloadService {
 
             rt.block_on(async {
                 while !*cancel.lock().await {
-                    if let Some(id) = queue.lock().await.pop_front() {
-                        if let Some(downloader) = &mut downloaders.lock().await.get(&id) {
-                            downloader.lock().await.start_download();
+                    if let Some(downloader) = queue.lock().await.pop_front() {
+                        println!("start_download 1");
+                        if downloader.lock().await.is_stop_async().await {
+                            continue;
                         }
+                        println!("start_download 2");
+                        downloader.lock().await.start_download();
                     }
                 }
             })
@@ -54,47 +53,12 @@ impl DownloadService {
         self.thread_handle = Some(handle);
     }
 
-    pub fn add_downloader(&mut self, downloader: Downloader) -> u64 {
-        self.instance_id = self.instance_id + 1;
+    pub fn add_downloader(&mut self, config: DownloadConfiguration) -> DownloadOperation {
+        let downloader = Downloader::new(config);
         let downloader = Arc::new(Mutex::new(downloader));
-        self.downloaders.blocking_lock().insert(self.instance_id, downloader);
-        self.download_queue.blocking_lock().push_front(self.instance_id);
-        return self.instance_id;
-    }
-
-    pub fn remove_downloader(&mut self, id: u64) {
-        if let Some(downloader) = self.downloaders.blocking_lock().get(&id) {
-            downloader.blocking_lock().stop();
-            self.downloaders.blocking_lock().remove(&id);
-        }
-    }
-
-    pub fn get_downloaded_size(&mut self, id: u64) -> u64 {
-        if let Some(downloader) = self.downloaders.blocking_lock().get(&id) {
-            return downloader.blocking_lock().get_downloaded_size();
-        }
-        return 0;
-    }
-
-    pub fn get_download_text(&mut self, id: u64) -> String {
-        if let Some(downloader) = self.downloaders.blocking_lock().get(&id) {
-            return downloader.blocking_lock().text();
-        }
-        return String::new();
-    }
-
-    pub fn get_download_status(&mut self, id: u64) -> i32 {
-        if let Some(downloader) = self.downloaders.blocking_lock().get(&id) {
-            return downloader.blocking_lock().get_download_status();
-        }
-        return 0;
-    }
-
-    pub fn get_download_is_done(&mut self, id: u64) -> bool {
-        if let Some(downloader) = self.downloaders.blocking_lock().get(&id) {
-            return downloader.blocking_lock().is_done();
-        }
-        return true;
+        self.download_queue.blocking_lock().push_front(downloader.clone());
+        let operation = DownloadOperation::new(downloader.clone());
+        return operation;
     }
 
     pub fn stop(&mut self) {
@@ -104,26 +68,13 @@ impl DownloadService {
 
 #[cfg(test)]
 mod test {
-    use std::collections::VecDeque;
-    use std::process::id;
-    use std::sync::Arc;
-    use std::thread::sleep;
-    use std::time::Duration;
-    use tokio::sync::Mutex;
     use crate::download_configuration::DownloadConfiguration;
-    use crate::download_handle::DownloadHandle;
-    use crate::download_service::{Downloaders, DownloadService};
+    use crate::download_service::{DownloadService};
     use crate::downloader::{Downloader};
 
     #[test]
     fn test_download_service() {
-        let mut service = DownloadService {
-            instance_id: 0u64,
-            download_queue: Arc::new(Mutex::new(VecDeque::new())),
-            downloaders: Arc::new(Mutex::new(Downloaders::new())),
-            thread_handle: None,
-            cancel: Arc::new(Mutex::new(false)),
-        };
+        let mut service = DownloadService::new();
 
         service.start_service();
 
@@ -132,13 +83,11 @@ mod test {
             .set_url(url)
             .set_download_in_memory()
             .build();
-        let mut downloader = Downloader::new(config);
-        let id0 = service.add_downloader(downloader);
+        let operation = service.add_downloader(config);
 
-        while !service.get_download_is_done(id0) {
-        }
+        while !operation.is_done() {}
 
-        println!("{}", service.get_download_text(id0));
+        println!("{}", operation.text());
 
         service.stop();
     }

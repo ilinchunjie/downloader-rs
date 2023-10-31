@@ -1,5 +1,8 @@
 use std::ffi::{c_char, CStr};
+use std::sync::{Arc};
+use tokio::sync::Mutex;
 use crate::download_configuration::DownloadConfiguration;
+use crate::download_operation::DownloadOperation;
 use crate::download_service::DownloadService;
 use crate::downloader::Downloader;
 
@@ -19,7 +22,7 @@ pub extern "C" fn get_download_service() -> *mut DownloadService {
 }
 
 #[no_mangle]
-pub extern "C" fn download_service_dispose(ptr: *mut Downloader) {
+pub extern "C" fn download_service_dispose(ptr: *mut DownloadService) {
     if ptr.is_null() {
         return;
     }
@@ -30,7 +33,7 @@ pub extern "C" fn download_service_dispose(ptr: *mut Downloader) {
 }
 
 #[no_mangle]
-pub extern "C" fn add_downloader(ptr: *mut DownloadService, config: DownloadConfig) -> u64 {
+pub extern "C" fn add_downloader(ptr: *mut DownloadService, config: DownloadConfig) -> *mut DownloadOperation {
     let download_service = unsafe { ptr.as_mut().expect("invalid ptr: ") };
     let url = unsafe { CStr::from_ptr(config.url).to_string_lossy().to_string() };
     let path = unsafe { CStr::from_ptr(config.path).to_string_lossy().to_string() };
@@ -40,24 +43,24 @@ pub extern "C" fn add_downloader(ptr: *mut DownloadService, config: DownloadConf
         .set_chunk_download(config.chunk_download)
         .set_chunk_size(config.chunk_siez)
         .build();
-    let downloader = Downloader::new(config);
-    download_service.add_downloader(downloader)
+    let operation = download_service.add_downloader(config);
+    Box::into_raw(Box::new(operation))
 }
 
 #[no_mangle]
-pub extern "C" fn get_download_status(ptr: *mut DownloadService, id: u64) -> i32 {
-    let download_service = unsafe { ptr.as_mut().expect("invalid ptr: ") };
-    download_service.get_download_status(id)
+pub extern "C" fn get_download_status(ptr: *mut DownloadOperation) -> i32 {
+    let operation = unsafe { ptr.as_mut().expect("invalid ptr: ") };
+    operation.status()
 }
 
 #[no_mangle]
-pub extern "C" fn get_downloaded_size(ptr: *mut DownloadService, id: u64) -> u64 {
-    let download_service = unsafe { ptr.as_mut().expect("invalid ptr: ") };
-    download_service.get_downloaded_size(id)
+pub extern "C" fn get_downloaded_size(ptr: *mut DownloadOperation) -> u64 {
+    let operation = unsafe { ptr.as_mut().expect("invalid ptr: ") };
+    operation.downloaded_size()
 }
 
 #[no_mangle]
-pub extern "C" fn remove_downloader(ptr: *mut DownloadService, id: u64) {
-    let download_service = unsafe { ptr.as_mut().expect("invalid ptr: ") };
-    download_service.remove_downloader(id)
+pub extern "C" fn stop_downloader(ptr: *mut DownloadOperation) {
+    let operation = unsafe { ptr.as_mut().expect("invalid ptr: ") };
+    operation.stop();
 }
