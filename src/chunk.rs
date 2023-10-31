@@ -20,36 +20,29 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    pub async fn setup(&mut self) -> Result<(), Box<dyn Error + Send>> {
+    pub async fn setup(&mut self) -> crate::error::Result<()> {
         match self.download_handle.lock().await.deref_mut() {
             DownloadHandle::File(download_handle) => {
-                self.chunk_metadata.as_mut().unwrap().lock().await.update_chunk_version(self.version).await;
-                if let Err(e) = download_handle.setup().await {
-                    return Err(e);
-                }
+                self.chunk_metadata.as_mut().unwrap().lock().await.update_chunk_version(self.version).await?;
+                download_handle.setup().await?;
             }
             DownloadHandle::Memory(download_handle) => {
-                if let Err(e) = download_handle.setup().await {
-                    return Err(e);
-                }
+                download_handle.setup().await?;
             }
         }
         Ok(())
     }
 
-    pub async fn received_bytes_async(&mut self, buffer: &Vec<u8>) -> Result<(), Box<dyn Error + Send>> {
+    pub async fn received_bytes_async(&mut self, buffer: &Vec<u8>) -> crate::error::Result<()> {
         match self.download_handle.lock().await.deref_mut() {
             DownloadHandle::File(download_handle) => {
-                if let Err(e) = download_handle.received_bytes_async(self.position, buffer).await {
-                    return Err(e);
-                }
+                download_handle.received_bytes_async(self.position, buffer).await?;
+                download_handle.flush_async().await?;
                 self.position += buffer.len() as u64;
-                self.chunk_metadata.as_mut().unwrap().lock().await.update_chunk_position(self.position, self.index).await;
+                self.chunk_metadata.as_mut().unwrap().lock().await.update_chunk_position(self.position, self.index).await?;
             }
             DownloadHandle::Memory(download_handle) => {
-                if let Err(e) = download_handle.received_bytes_async(self.position, buffer).await {
-                    return Err(e);
-                }
+                download_handle.received_bytes_async(self.position, buffer).await?;
                 self.position += buffer.len() as u64;
             }
         }
@@ -103,7 +96,7 @@ pub async fn start_download(
     url: Arc<String>,
     chunk: Arc<Mutex<Chunk>>,
     options: Arc<Mutex<DownloadOptions>>,
-) -> Result<(), Box<dyn Error + Send>> {
+) -> crate::error::Result<()> {
     let lock_chunk = chunk.lock().await;
     let config = DownloadTaskConfiguration {
         range_download: lock_chunk.range_download,

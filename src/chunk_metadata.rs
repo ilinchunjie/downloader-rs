@@ -1,3 +1,4 @@
+use std::fmt::format;
 use std::io::SeekFrom;
 use std::mem;
 use std::path::PathBuf;
@@ -5,6 +6,7 @@ use std::sync::Arc;
 use tokio::fs;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+use crate::error::DownloadError;
 
 pub struct ChunkMetadata {
     pub path: Arc<PathBuf>,
@@ -15,7 +17,7 @@ pub struct ChunkMetadata {
 }
 
 impl ChunkMetadata {
-    pub async fn create_chunk_metadata(&mut self) {
+    pub async fn create_chunk_metadata(&mut self) -> crate::error::Result<()> {
         match OpenOptions::new().write(true).create(true).open(&self.path.as_path()).await {
             Ok(mut meta_file) => {
                 meta_file.write(&self.version.to_le_bytes()).await;
@@ -26,9 +28,11 @@ impl ChunkMetadata {
                 self.file = Some(meta_file);
             }
             Err(e) => {
-                println!("{}", e);
+                return Err(DownloadError::CreateMetaFile(format!("{} 创建失败 : {}", self.path.to_str().unwrap(), e)));
             }
         }
+
+        Ok(())
     }
 
     pub async fn get_chunk_metadata(path: Arc<PathBuf>, chunk_count: u16) -> ChunkMetadata {
@@ -71,20 +75,22 @@ impl ChunkMetadata {
         chunk_metadata
     }
 
-    pub async fn update_chunk_version(&mut self, version: i64) {
+    pub async fn update_chunk_version(&mut self, version: i64) -> crate::error::Result<()> {
         if let None = self.file {
-            self.create_chunk_metadata().await;
+            self.create_chunk_metadata().await?;
         }
         if let Some(meta_file) = &mut self.file {
             meta_file.seek(SeekFrom::Start(0)).await;
             meta_file.write(&version.to_le_bytes()).await;
             meta_file.flush().await;
         }
+
+        Ok(())
     }
 
-    pub async fn update_chunk_position(&mut self, position: u64, chunk_index: u16) {
+    pub async fn update_chunk_position(&mut self, position: u64, chunk_index: u16) -> crate::error::Result<()> {
         if let None = self.file {
-            self.create_chunk_metadata().await;
+            self.create_chunk_metadata().await?;
         }
         if let Some(meta_file) = &mut self.file {
             let version_length = mem::size_of::<i64>();
@@ -94,5 +100,7 @@ impl ChunkMetadata {
             meta_file.write(&position.to_le_bytes()).await;
             meta_file.flush().await;
         }
+
+        Ok(())
     }
 }

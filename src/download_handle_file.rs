@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_handle::{DownloadHandle, DownloadHandleTrait};
+use crate::error::DownloadError;
 use crate::stream::Stream;
 
 pub struct DownloadHandleFile {
@@ -22,9 +23,9 @@ impl DownloadHandleFile {
         }
     }
 
-    pub async fn flush_async(&mut self) -> Result<(), std::io::Error> {
+    pub async fn flush_async(&mut self) -> crate::error::Result<()> {
         if let Some(stream) = &mut self.stream {
-            return stream.flush_async().await;
+            stream.flush_async().await?;
         }
         Ok(())
     }
@@ -32,28 +33,18 @@ impl DownloadHandleFile {
 
 #[async_trait::async_trait]
 impl DownloadHandleTrait for DownloadHandleFile {
-    async fn setup(&mut self) -> Result<(), Box<dyn Error + Send>> {
+    async fn setup(&mut self) -> crate::error::Result<()> {
         let path = PathBuf::from(self.config.lock().await.path.as_ref().unwrap().deref());
-        match Stream::new(path).await {
-            Ok(stream) => {
-                self.stream = Some(stream);
-            }
-            Err(e) => {
-                return Err(Box::new(e));
-            }
-        }
+        let stream = Stream::new(path).await?;
+        self.stream = Some(stream);
         Ok(())
     }
 
-    async fn received_bytes_async(&mut self, position: u64, buffer: &Vec<u8>) -> Result<(), Box<dyn Error + Send>> {
+    async fn received_bytes_async(&mut self, position: u64, buffer: &Vec<u8>) -> crate::error::Result<()> {
         self.downloaded_size += buffer.len() as u64;
         if let Some(stream) = &mut self.stream {
-            if let Err(e) = stream.seek_async(position).await {
-                return Err(Box::new(e));
-            }
-            if let Err(e) = stream.write_async(buffer).await {
-                return Err(Box::new(e));
-            }
+            stream.seek_async(position).await?;
+            stream.write_async(buffer).await?;
         }
         Ok(())
     }

@@ -190,6 +190,7 @@ async fn async_start_download(
         match handle.await {
             Ok(result) => {
                 if let Err(e) = result {
+                    println!("{}", e);
                     *status.lock().await = DownloaderStatus::Failed;
                     return;
                 }

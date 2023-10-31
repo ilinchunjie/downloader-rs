@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_handle::{DownloadHandleTrait};
+use crate::error::DownloadError;
 
 pub struct DownloadHandleMemory {
     config: Arc<Mutex<DownloadConfiguration>>,
@@ -52,21 +53,21 @@ impl DownloadHandleMemory {
 
 #[async_trait::async_trait]
 impl DownloadHandleTrait for DownloadHandleMemory {
-    async fn setup(&mut self) -> Result<(), Box<dyn Error + Send>> {
+    async fn setup(&mut self) -> crate::error::Result<()> {
         let size = self.config.lock().await.total_length;
         let buffer: Vec<u8> = Vec::with_capacity(size as usize);
         self.cursor = Some(Cursor::new(buffer));
         Ok(())
     }
 
-    async fn received_bytes_async(&mut self, poition: u64, buffer: &Vec<u8>) -> Result<(), Box<dyn Error + Send>> {
+    async fn received_bytes_async(&mut self, poition: u64, buffer: &Vec<u8>) -> crate::error::Result<()> {
         self.downloaded_size += buffer.len() as u64;
         if let Some(cursor) = &mut self.cursor {
             if let Err(e) = cursor.seek(SeekFrom::Start(poition)) {
-                return Err(Box::new(e));
+                return Err(DownloadError::Seek);
             }
             if let Err(e) = cursor.write_all(buffer) {
-                return Err(Box::new(e));
+                return Err(DownloadError::Write);
             }
         }
         Ok(())

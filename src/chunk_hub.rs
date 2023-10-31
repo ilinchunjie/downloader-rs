@@ -29,8 +29,8 @@ impl ChunkHub {
     pub fn start_download(
         &mut self,
         options: Arc<Mutex<DownloadOptions>>,
-    ) -> Vec<JoinHandle<Result<(), Box<dyn Error + Send>>>> {
-        let mut handles: Vec<JoinHandle<Result<(), Box<dyn Error + Send>>>> = vec![];
+    ) -> Vec<JoinHandle<crate::error::Result<()>>> {
+        let mut handles: Vec<JoinHandle<crate::error::Result<()>>> = vec![];
         if let Some(chunks) = &mut self.chunks {
             for chunk in chunks {
                 let handle = spawn(start_download_chunks(
@@ -153,7 +153,7 @@ async fn start_download_chunks(
     config: Arc<Mutex<DownloadConfiguration>>,
     chunk: Arc<Mutex<Chunk>>,
     options: Arc<Mutex<DownloadOptions>>,
-) -> Result<(), Box<dyn Error + Send>> {
+) -> crate::error::Result<()> {
     {
         let mut chunk = chunk.lock().await;
         if chunk.valid {

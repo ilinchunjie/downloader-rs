@@ -39,11 +39,9 @@ impl DownloadService {
             rt.block_on(async {
                 while !*cancel.lock().await {
                     if let Some(downloader) = queue.lock().await.pop_front() {
-                        println!("start_download 1");
                         if downloader.lock().await.is_stop_async().await {
                             continue;
                         }
-                        println!("start_download 2");
                         downloader.lock().await.start_download();
                     }
                 }
@@ -81,11 +79,13 @@ mod test {
         let url = "https://lan.sausage.xd.com/servers.txt".to_string();
         let config = DownloadConfiguration::new()
             .set_url(url)
-            .set_download_in_memory()
+            .set_file_path("temp/servers.txt".to_string())
             .build();
         let operation = service.add_downloader(config);
 
-        while !operation.is_done() {}
+        while !operation.is_done() {
+            println!("{}", operation.downloaded_size());
+        }
 
         println!("{}", operation.text());
 

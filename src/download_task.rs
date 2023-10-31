@@ -2,11 +2,13 @@ use std::error::Error;
 use std::fmt::{Debug};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
+use std::time::Duration;
 use futures::StreamExt;
 use reqwest::header::RANGE;
 use tokio::sync::Mutex;
 use crate::chunk::{Chunk};
 use crate::downloader::DownloadOptions;
+use crate::error::DownloadError;
 
 #[derive(Clone)]
 pub struct DownloadTaskConfiguration {
@@ -31,7 +33,7 @@ impl DownloadTask {
         &mut self,
         options: Arc<Mutex<DownloadOptions>>,
         download_chunk: Arc<Mutex<Chunk>>
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) -> crate::error::Result<()> {
         let mut range_str = String::new();
         if self.config.range_download {
             if self.config.range_start < self.config.range_end {
@@ -41,9 +43,9 @@ impl DownloadTask {
             }
         }
 
-        let request = reqwest::Client::new().
-            get(self.config.url.deref()).
-            header(RANGE, range_str);
+        let request = reqwest::Client::new()
+            .get(self.config.url.deref())
+            .header(RANGE, range_str);
 
         let result = request.send().await;
 
@@ -64,22 +66,22 @@ impl DownloadTask {
                             match chunk {
                                 Ok(bytes) => {
                                     let buffer = bytes.to_vec() as Vec<u8>;
-                                    download_chunk.lock().await.received_bytes_async(&buffer).await?
+                                    download_chunk.lock().await.received_bytes_async(&buffer).await?;
                                 }
                                 Err(e) => {
-                                    return Err(Box::new(e));
+                                    return Err(DownloadError::FailToReadChunk);
                                 }
                             }
                         }
                     }
                     Err(e) => {
-                        return Err(Box::new(e));
+                        return Err(DownloadError::ResponseFail);
                     }
                 }
                 Ok(())
             }
             Err(e) => {
-                return Err(Box::new(e));
+                return Err(DownloadError::RequestFail);
             }
         }
     }
