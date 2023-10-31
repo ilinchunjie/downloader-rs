@@ -69,19 +69,19 @@ impl DownloadTask {
                                     download_chunk.lock().await.received_bytes_async(&buffer).await?;
                                 }
                                 Err(e) => {
-                                    return Err(DownloadError::FailToReadChunk);
+                                    return Err(DownloadError::ResponseChunk);
                                 }
                             }
                         }
                     }
                     Err(e) => {
-                        return Err(DownloadError::ResponseFail);
+                        return Err(DownloadError::Response);
                     }
                 }
                 Ok(())
             }
             Err(e) => {
-                return Err(DownloadError::RequestFail);
+                return Err(DownloadError::Request);
             }
         }
     }

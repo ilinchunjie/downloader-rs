@@ -29,7 +29,7 @@ impl Stream {
 
     pub async fn seek_async(&mut self, position: u64) -> crate::error::Result<()> {
         if let Err(e) = self.file.seek(SeekFrom::Start(position)).await {
-            return Err(DownloadError::Seek);
+            return Err(DownloadError::FileSeek);
         }
 
         Ok(())
@@ -37,7 +37,7 @@ impl Stream {
 
     pub async fn write_async(&mut self, buffer: &Vec<u8>) -> crate::error::Result<()> {
         if let Err(e) = self.file.write_all(buffer).await {
-            return Err(DownloadError::Write);
+            return Err(DownloadError::FileWrite);
         }
 
         Ok(())
@@ -45,7 +45,7 @@ impl Stream {
 
     pub async fn flush_async(&mut self) -> crate::error::Result<()> {
         if let Err(e) = self.file.flush().await {
-            return Err(DownloadError::FlushToDisk);
+            return Err(DownloadError::FileFlush);
         }
 
         Ok(())

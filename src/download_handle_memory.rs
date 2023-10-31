@@ -64,10 +64,10 @@ impl DownloadHandleTrait for DownloadHandleMemory {
         self.downloaded_size += buffer.len() as u64;
         if let Some(cursor) = &mut self.cursor {
             if let Err(e) = cursor.seek(SeekFrom::Start(poition)) {
-                return Err(DownloadError::Seek);
+                return Err(DownloadError::MemorySeek);
             }
             if let Err(e) = cursor.write_all(buffer) {
-                return Err(DownloadError::Write);
+                return Err(DownloadError::MemoryWrite);
             }
         }
         Ok(())

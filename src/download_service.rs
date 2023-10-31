@@ -79,7 +79,7 @@ mod test {
         let url = "https://lan.sausage.xd.com/servers.txt".to_string();
         let config = DownloadConfiguration::new()
             .set_url(url)
-            .set_file_path("temp/servers.txt".to_string())
+            .set_download_in_memory()
             .build();
         let operation = service.add_downloader(config);
 
