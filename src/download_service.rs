@@ -63,32 +63,3 @@ impl DownloadService {
         *self.cancel.blocking_lock() = true;
     }
 }
-
-#[cfg(test)]
-mod test {
-    use crate::download_configuration::DownloadConfiguration;
-    use crate::download_service::{DownloadService};
-    use crate::downloader::{Downloader};
-
-    #[test]
-    fn test_download_service() {
-        let mut service = DownloadService::new();
-
-        service.start_service();
-
-        let url = "https://lan.sausage.xd.com/servers.txt".to_string();
-        let config = DownloadConfiguration::new()
-            .set_url(url)
-            .set_download_in_memory()
-            .build();
-        let operation = service.add_downloader(config);
-
-        while !operation.is_done() {
-            println!("{}", operation.downloaded_size());
-        }
-
-        println!("{}", operation.text());
-
-        service.stop();
-    }
-}

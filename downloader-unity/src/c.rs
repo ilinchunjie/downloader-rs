@@ -1,10 +1,10 @@
 use std::ffi::{c_char, CStr};
 use std::sync::{Arc};
 use tokio::sync::Mutex;
-use crate::download_configuration::DownloadConfiguration;
-use crate::download_operation::DownloadOperation;
-use crate::download_service::DownloadService;
-use crate::downloader::Downloader;
+use downloader_rs::download_configuration::DownloadConfiguration;
+use downloader_rs::download_operation::DownloadOperation;
+use downloader_rs::download_service::DownloadService;
+use downloader_rs::downloader::Downloader;
 
 #[repr(C)]
 pub struct DownloadConfig {
@@ -15,14 +15,14 @@ pub struct DownloadConfig {
 }
 
 #[no_mangle]
-pub extern "C" fn get_download_service() -> *mut DownloadService {
+pub extern "C" fn start_download_service() -> *mut DownloadService {
     let mut download_service = DownloadService::new();
     download_service.start_service();
     Box::into_raw(Box::new(download_service))
 }
 
 #[no_mangle]
-pub extern "C" fn download_service_dispose(ptr: *mut DownloadService) {
+pub extern "C" fn stop_download_service(ptr: *mut DownloadService) {
     if ptr.is_null() {
         return;
     }
