@@ -61,7 +61,7 @@ impl Chunk {
     }
 
     pub async fn validate(&mut self) {
-        self.position = 0;
+        self.position = self.start;
 
         let chunk_metadata = self.chunk_metadata.as_mut().unwrap().lock().await;
         if chunk_metadata.version == 0 || chunk_metadata.version != self.version {

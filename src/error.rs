@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter, write};
 
 pub enum DownloadError {
+    FileSetLength(String),
     FileSeek,
     FileWrite,
     FileFlush,
@@ -19,6 +20,9 @@ pub type Result<T> = core::result::Result<T, DownloadError>;
 impl Display for DownloadError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            DownloadError::FileSetLength(message) => {
+                write!(f, "{}", message)
+            }
             DownloadError::FileSeek => { write!(f, "") }
             DownloadError::FileWrite => { write!(f, "") }
             DownloadError::FileFlush => { write!(f, "") }

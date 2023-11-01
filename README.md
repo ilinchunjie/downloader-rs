@@ -20,7 +20,7 @@ a simple file downloader for rust
 - [x] multithreading/chunk/resumable download
 - [x] download in memory
 - [ ] bandwidth limit
-- [ ] thread count limit
+- [x] thread count limit
 - [ ] retry times after failure
 
 # Welcome to submit pull requests.

@@ -10,11 +10,11 @@ pub struct Stream {
 }
 
 impl Stream {
-    pub async fn new(path: PathBuf) -> crate::error::Result<Stream> {
+    pub async fn new(path: PathBuf, append: bool) -> crate::error::Result<Stream> {
         match OpenOptions::new().
             create(true).
             write(true).
-            append(true).
+            append(append).
             open(&path).await {
             Ok(file) => {
                 Ok(Stream {
@@ -25,6 +25,14 @@ impl Stream {
                 Err(DownloadError::OpenOrCreateFile)
             }
         }
+    }
+
+    pub async fn set_length(&mut self, length: u64) -> crate::error::Result<()> {
+        if let Err(e) = self.file.set_len(length).await {
+            return Err(DownloadError::FileSetLength(format!("set file length failed : {}", e)));
+        }
+
+        Ok(())
     }
 
     pub async fn seek_async(&mut self, position: u64) -> crate::error::Result<()> {

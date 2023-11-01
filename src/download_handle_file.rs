@@ -34,8 +34,14 @@ impl DownloadHandleFile {
 #[async_trait::async_trait]
 impl DownloadHandleTrait for DownloadHandleFile {
     async fn setup(&mut self) -> crate::error::Result<()> {
-        let path = PathBuf::from(self.config.lock().await.path.as_ref().unwrap().deref());
-        let stream = Stream::new(path).await?;
+        let config = self.config.lock().await;
+        let path = PathBuf::from(config.path.as_ref().unwrap().deref());
+        let append = !config.chunk_download && config.support_range_download;
+        let mut stream = Stream::new(path, append).await?;
+        if config.set_file_length {
+            let total_length = config.total_length;
+            &stream.set_length(total_length).await?;
+        }
         self.stream = Some(stream);
         Ok(())
     }

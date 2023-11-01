@@ -17,6 +17,11 @@ pub struct ChunkMetadata {
 }
 
 impl ChunkMetadata {
+    fn get_metadata_length(&self) -> u64 {
+        let length = (mem::size_of::<i64>() + mem::size_of::<u16>() + self.chunk_count as usize * mem::size_of::<u64>()) as u64;
+        length
+    }
+
     pub async fn create_chunk_metadata(&mut self) -> crate::error::Result<()> {
         match OpenOptions::new().write(true).create(true).open(&self.path.as_path()).await {
             Ok(mut meta_file) => {
@@ -25,10 +30,12 @@ impl ChunkMetadata {
                 for i in 0..self.chunk_count {
                     meta_file.write(&(0 as u64).to_le_bytes()).await;
                 }
+                meta_file.set_len(self.get_metadata_length());
+                meta_file.flush().await;
                 self.file = Some(meta_file);
             }
             Err(e) => {
-                return Err(DownloadError::CreateMetaFile(format!("{} 创建失败 : {}", self.path.to_str().unwrap(), e)));
+                return Err(DownloadError::CreateMetaFile(format!("{} open failed : {}", self.path.to_str().unwrap(), e)));
             }
         }
 
@@ -67,8 +74,8 @@ impl ChunkMetadata {
                     }
                     chunk_metadata.chunk_positions.push(chunk_position);
                 }
-                let length = (mem::size_of::<i64>() + mem::size_of::<u16>() + chunk_count as usize * mem::size_of::<u64>()) as u64;
-                meta_file.set_len(length).await;
+                meta_file.set_len(chunk_metadata.get_metadata_length()).await;
+                meta_file.flush().await;
                 chunk_metadata.file = Some(meta_file);
             }
         }
