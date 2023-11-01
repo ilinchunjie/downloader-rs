@@ -74,7 +74,7 @@ jobs:
         run: |
           cargo install cross
 
-      - name: build binary
+      - name: build library
         run: |
           cd downloader-unity
           cross build --release --target ${{ matrix.target}}
@@ -142,7 +142,7 @@ jobs:
         run: |
           cargo install cargo-ndk
 
-      - name: build binary
+      - name: build library
         run: |
           cd downloader-unity
           cargo ndk -t ${{ matrix.target }} build --release
@@ -188,13 +188,13 @@ jobs:
         run: |
           cargo install cross
 
-      - name: build binary
+      - name: build library
         run: |
           cd downloader-unity
           cross build --release --target aarch64-apple-ios
           cross build --release --target x86_64-apple-ios
           mkdir -p "target/universal/release"
-          lipo -create -output target/universal/release/libdownloader.a target/aarch64-apple-ios/release/libdownloader.a target/x86_64-apple-ios/release/libtest.a
+          lipo -create -output target/universal/release/libdownloader.a target/aarch64-apple-ios/release/libdownloader.a target/x86_64-apple-ios/release/libdownloader.a
 
       - name: build archive
         shell: bash

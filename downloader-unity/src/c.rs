@@ -1,6 +1,4 @@
 use std::ffi::{c_char, CStr};
-use std::sync::{Arc};
-use tokio::sync::Mutex;
 use downloader_rs::download_configuration::DownloadConfiguration;
 use downloader_rs::download_operation::DownloadOperation;
 use downloader_rs::download_service::DownloadService;

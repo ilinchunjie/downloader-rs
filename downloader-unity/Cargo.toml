@@ -7,7 +7,6 @@ edition = "2021"
 
 [dependencies]
 downloader-rs = { path = "../../downloader-rs" }
-tokio = { version = "1.32.0", features = ["full"] }
 
 [lib]
 name = "downloader"
