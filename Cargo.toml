@@ -25,6 +25,9 @@ openssl = { version = "0.10.57", features = ["vendored"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 openssl = { version = "0.10.57", features = ["vendored"] }
 
+[target.'cfg(target_os = "android")'.dependencies]
+openssl = { version = "0.10.57", features = ["vendored"] }
+
 [profile.dev]
 debug = true
 

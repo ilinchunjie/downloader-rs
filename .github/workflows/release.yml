@@ -82,7 +82,8 @@ jobs:
       - name: build archive
         shell: bash
         run: |
-          staging="test-${{ matrix.target }}"
+          cd downloader-unity
+          staging="downloader-${{ matrix.target }}"
           mkdir -p "$staging"
           
           if [ "${{ matrix.build }}" = "win32-msvc" ] || [ "${{ matrix.build }}" = "win64-msvc" ]; then
@@ -149,7 +150,8 @@ jobs:
       - name: build archive
         shell: bash
         run: |
-          staging="test-${{ matrix.target }}"
+          cd downloader-unity
+          staging="downloader-${{ matrix.target }}"
           mkdir -p "$staging"
           
           cp "target/${{ matrix.target }}/release/libdownloader.so" "$staging"
@@ -192,12 +194,13 @@ jobs:
           cross build --release --target aarch64-apple-ios
           cross build --release --target x86_64-apple-ios
           mkdir -p "target/universal/release"
-          lipo -create -output target/universal/release/libtest.a target/aarch64-apple-ios/release/libtest.a target/x86_64-apple-ios/release/libtest.a
+          lipo -create -output target/universal/release/libdownloader.a target/aarch64-apple-ios/release/libdownloader.a target/x86_64-apple-ios/release/libtest.a
 
       - name: build archive
         shell: bash
         run: |
-          staging="test-universal-apple-ios"
+          cd downloader-unity
+          staging="downloader-universal-apple-ios"
           mkdir -p "$staging"
           
           cp "target/universal/release/libdownloader.a" "$staging"
