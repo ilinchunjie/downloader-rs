@@ -27,7 +27,7 @@ jobs:
           release_name: ${{ env.APP_VERSION }}
 
   build-standalone:
-    name: build
+    name: build-standalone
     needs: [ 'create-release' ]
     runs-on: ${{ matrix.os }}
     strategy:
@@ -106,7 +106,7 @@ jobs:
           asset_content_type: application/octet-stream
 
   build-android:
-    name: build
+    name: build-android
     needs: [ 'create-release' ]
     runs-on: ${{ matrix.os }}
     strategy:
@@ -167,7 +167,7 @@ jobs:
           asset_content_type: application/octet-stream
 
   build-ios:
-    name: build
+    name: build-ios
     needs: [ 'create-release' ]
     runs-on: macos-12
 
