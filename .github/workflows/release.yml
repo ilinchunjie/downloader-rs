@@ -1,0 +1,215 @@
+name: release
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+jobs:
+  create-release:
+    name: create-release
+    runs-on: ubuntu-22.04
+    outputs:
+      upload_url: ${{ steps.release.outputs.upload_url }}
+    steps:
+      - name: get version
+        shell: bash
+        if: env.APP_VERSION == ''
+        run: |
+          echo "APP_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          echo "${{ env.APP_VERSION }}"
+      - name: create release
+        id: release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.APP_VERSION }}
+          release_name: ${{ env.APP_VERSION }}
+
+  build-standalone:
+    name: build
+    needs: [ 'create-release' ]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        build: [ macos-x86_64, macos-aarch64, win64-msvc, win32-msvc, linux-x86_64, linux-aarch64 ]
+        include:
+          - build: macos-x86_64
+            os: macos-12
+            target: x86_64-apple-darwin
+            output_name: libdownloader.a
+          - build: macos-aarch64
+            os: macos-12
+            target: aarch64-apple-darwin
+            output_name: libdownloader.a
+          - build: win64-msvc
+            os: windows-2022
+            target: x86_64-pc-windows-msvc
+            output_name: downloader.dll
+          - build: win32-msvc
+            os: windows-2022
+            target: i686-pc-windows-msvc
+            output_name: downloader.dll
+          - build: linux-x86_64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            output_name: libdownloader.so
+          - build: linux-aarch64
+            os: ubuntu-22.04
+            target: aarch64-unknown-linux-gnu
+            output_name: libdownloader.so
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+
+      - name: install rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.73.0
+          target: ${{ matrix.target }}
+
+      - name: install cross
+        shell: bash
+        run: |
+          cargo install cross
+
+      - name: build binary
+        run: |
+          cd downloader-unity
+          cross build --release --target ${{ matrix.target}}
+
+      - name: build archive
+        shell: bash
+        run: |
+          staging="test-${{ matrix.target }}"
+          mkdir -p "$staging"
+          
+          if [ "${{ matrix.build }}" = "win32-msvc" ] || [ "${{ matrix.build }}" = "win64-msvc" ]; then
+            cp "target/${{ matrix.target }}/release/${{ matrix.output_name }}" "$staging"
+            7z a "$staging.zip" "$staging"
+            echo "ASSET=$staging.zip" >> $GITHUB_ENV
+          else
+            cp "target/${{ matrix.target }}/release/${{ matrix.output_name }}" "$staging"
+            tar czf "$staging.tar.gz" "$staging"
+            echo "ASSET=$staging.tar.gz" >> $GITHUB_ENV
+          fi
+
+      - name: upload
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.ASSET }}
+          asset_name: ${{ env.ASSET }}
+          asset_content_type: application/octet-stream
+
+  build-android:
+    name: build
+    needs: [ 'create-release' ]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        build: [ android-aarch64, android-armv7, android-x86_64, android-i686 ]
+        include:
+          - build: android-aarch64
+            os: macos-12
+            target: aarch64-linux-android
+          - build: android-armv7
+            os: macos-12
+            target: armv7-linux-androideabi
+          - build: android-x86_64
+            os: macos-12
+            target: x86_64-linux-android
+          - build: android-i686
+            os: macos-12
+            target: i686-linux-android
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+
+      - name: install rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.73.0
+          target: ${{ matrix.target }}
+
+      - name: install ndk
+        shell: bash
+        run: |
+          cargo install cargo-ndk
+
+      - name: build binary
+        run: |
+          cd downloader-unity
+          cargo ndk -t ${{ matrix.target }} build --release
+
+      - name: build archive
+        shell: bash
+        run: |
+          staging="test-${{ matrix.target }}"
+          mkdir -p "$staging"
+          
+          cp "target/${{ matrix.target }}/release/libdownloader.so" "$staging"
+          tar czf "$staging.tar.gz" "$staging"
+          echo "ASSET=$staging.tar.gz" >> $GITHUB_ENV
+
+      - name: upload
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.ASSET }}
+          asset_name: ${{ env.ASSET }}
+          asset_content_type: application/octet-stream
+
+  build-ios:
+    name: build
+    needs: [ 'create-release' ]
+    runs-on: macos-12
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+
+      - name: install rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.73.0
+          target: aarch64-apple-ios, x86_64-apple-ios
+
+      - name: install cross
+        shell: bash
+        run: |
+          cargo install cross
+
+      - name: build binary
+        run: |
+          cd downloader-unity
+          cross build --release --target aarch64-apple-ios
+          cross build --release --target x86_64-apple-ios
+          mkdir -p "target/universal/release"
+          lipo -create -output target/universal/release/libtest.a target/aarch64-apple-ios/release/libtest.a target/x86_64-apple-ios/release/libtest.a
+
+      - name: build archive
+        shell: bash
+        run: |
+          staging="test-universal-apple-ios"
+          mkdir -p "$staging"
+          
+          cp "target/universal/release/libdownloader.a" "$staging"
+          tar czf "$staging.tar.gz" "$staging"
+          echo "ASSET=$staging.tar.gz" >> $GITHUB_ENV
+
+      - name: upload
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.ASSET }}
+          asset_name: ${{ env.ASSET }}
+          asset_content_type: application/octet-stream
