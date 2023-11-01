@@ -19,14 +19,11 @@ futures = { version = "0.3.28" }
 chrono = { version = "0.4.31" }
 async-trait = { version = "0.1.74" }
 
-[target.'cfg(target_os = "windows")'.dependencies]
-openssl = { version = "0.10.57" }
-
 [target.'cfg(target_os = "macos")'.dependencies]
-ssh2 = { version = "0.10.57", features = ["vendored-openssl"] }
+openssl = { version = "0.10.57", features = ["vendored"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-ssh2 = { version = "0.10.57", features = ["vendored-openssl"] }
+openssl = { version = "0.10.57", features = ["vendored"] }
 
 [profile.dev]
 debug = true
