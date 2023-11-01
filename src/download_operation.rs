@@ -2,6 +2,7 @@ use std::sync::{Arc};
 use tokio::sync::Mutex;
 use crate::downloader::Downloader;
 
+#[derive(Clone)]
 pub struct DownloadOperation {
     downloader: Arc<Mutex<Downloader>>,
 }
@@ -17,8 +18,8 @@ impl DownloadOperation {
         return self.downloader.blocking_lock().text();
     }
 
-    pub fn status(&self) -> i32 {
-        return self.downloader.blocking_lock().get_download_status();
+    pub fn status(&self) -> u8 {
+        return self.downloader.blocking_lock().status();
     }
 
     pub fn downloaded_size(&self) -> u64 {

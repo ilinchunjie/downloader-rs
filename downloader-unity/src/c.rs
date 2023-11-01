@@ -46,7 +46,7 @@ pub extern "C" fn add_downloader(ptr: *mut DownloadService, config: DownloadConf
 }
 
 #[no_mangle]
-pub extern "C" fn get_download_status(ptr: *mut DownloadOperation) -> i32 {
+pub extern "C" fn get_download_status(ptr: *mut DownloadOperation) -> u8 {
     let operation = unsafe { ptr.as_mut().expect("invalid ptr: ") };
     operation.status()
 }

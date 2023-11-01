@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::fmt::{Display, Formatter, write};
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc};
@@ -11,27 +12,60 @@ use crate::download_handle_file::DownloadHandleFile;
 use crate::download_handle_memory::DownloadHandleMemory;
 use crate::remote_file::{RemoteFile, RemoteFileInfo};
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Copy)]
 pub enum DownloaderStatus {
-    None = 0,
-    Head = 1,
-    Download = 2,
-    Archive = 3,
-    Complete = 4,
-    Failed = 5,
-    Stop = 6
+    None,
+    Pendding,
+    Head,
+    Download,
+    Archive,
+    Complete,
+    Failed,
+    Stop,
 }
 
 impl Display for DownloaderStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             DownloaderStatus::None => write!(f, "None"),
+            DownloaderStatus::Pendding => write!(f, "Pendding"),
             DownloaderStatus::Head => write!(f, "Head"),
             DownloaderStatus::Download => write!(f, "Download"),
             DownloaderStatus::Archive => write!(f, "Archive"),
             DownloaderStatus::Complete => write!(f, "Complete"),
             DownloaderStatus::Failed => write!(f, "Failed"),
             DownloaderStatus::Stop => write!(f, "Stop"),
+        }
+    }
+}
+
+impl Into<u8> for DownloaderStatus {
+    fn into(self) -> u8 {
+        match self {
+            DownloaderStatus::None => 0,
+            DownloaderStatus::Pendding => 1,
+            DownloaderStatus::Head => 2,
+            DownloaderStatus::Download => 3,
+            DownloaderStatus::Archive => 4,
+            DownloaderStatus::Complete => 5,
+            DownloaderStatus::Failed => 6,
+            DownloaderStatus::Stop => 7
+        }
+    }
+}
+
+impl From<u8> for DownloaderStatus {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => DownloaderStatus::None,
+            1 => DownloaderStatus::Pendding,
+            2 => DownloaderStatus::Head,
+            3 => DownloaderStatus::Download,
+            4 => DownloaderStatus::Archive,
+            5 => DownloaderStatus::Complete,
+            6 => DownloaderStatus::Failed,
+            7 => DownloaderStatus::Stop,
+            _ => DownloaderStatus::None,
         }
     }
 }
@@ -76,16 +110,10 @@ impl Downloader {
             self.download_handle.clone()));
     }
 
-    pub fn get_download_status(&self) -> i32 {
-        match *self.download_status.blocking_lock() {
-            DownloaderStatus::None => 0,
-            DownloaderStatus::Head => 1,
-            DownloaderStatus::Download => 2,
-            DownloaderStatus::Archive => 3,
-            DownloaderStatus::Complete => 4,
-            DownloaderStatus::Failed => 5,
-            DownloaderStatus::Stop => 6
-        }
+    pub fn status(&self) -> u8 {
+        let status = *self.download_status.blocking_lock();
+        let status: u8 = status.into();
+        return status;
     }
 
     pub fn get_downloaded_size(&self) -> u64 {
@@ -96,7 +124,7 @@ impl Downloader {
             DownloadHandle::Memory(download_handle) => {
                 download_handle.get_downloaded_size()
             }
-        }
+        };
     }
 
     pub fn text(&self) -> String {
@@ -107,7 +135,7 @@ impl Downloader {
             DownloadHandle::Memory(download_handle) => {
                 download_handle.text()
             }
-        }
+        };
     }
 
     pub fn get_total_size(&self) -> u64 {
@@ -120,6 +148,13 @@ impl Downloader {
             || *self.download_status.blocking_lock() == DownloaderStatus::Stop;
     }
 
+    pub async fn is_done_async(&self) -> bool {
+        let status = *self.download_status.lock().await;
+        return status == DownloaderStatus::Complete
+            || status == DownloaderStatus::Failed
+            || status == DownloaderStatus::Stop;
+    }
+
     pub fn is_stop(&self) -> bool {
         return *self.download_status.blocking_lock() == DownloaderStatus::Stop;
     }
@@ -130,6 +165,10 @@ impl Downloader {
 
     pub fn is_error(&self) -> bool {
         return *self.download_status.blocking_lock() == DownloaderStatus::Failed;
+    }
+
+    pub fn start(&mut self) {
+        *self.download_status.blocking_lock() = DownloaderStatus::Pendding;
     }
 
     pub fn stop(&mut self) {
