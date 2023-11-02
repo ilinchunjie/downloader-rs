@@ -32,6 +32,5 @@ a simple file downloader for rust
 
 # Welcome to submit pull requests.
 
-# Preview
-
+# Examples
 ![gif](https://github.com/ilinchunjie/downloader-rs/blob/main/res/download.gif)
