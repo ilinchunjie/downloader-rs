@@ -45,6 +45,22 @@ impl ChunkHub {
         return handles;
     }
 
+    pub fn get_chunk_count(&self) -> usize {
+        if let Some(chunks) = &self.chunks {
+            return chunks.len()
+        }
+        return 0;
+    }
+
+    pub fn get_chunk_progress(&self, index: usize) -> f64 {
+        if let Some(chunks) = &self.chunks {
+            if let Some(chunk) = chunks.get(index) {
+                return chunk.blocking_lock().get_progress();
+            }
+        }
+        return 0f64;
+    }
+
     fn from_file_chunk(
         &self,
         download_handle: Arc<Mutex<DownloadHandle>>,

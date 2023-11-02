@@ -13,6 +13,12 @@
   </a>
 </div>
 
+<div>
+  <h4>
+    <a href="https://github.com/ilinchunjie/downloader-rs/blob/main/examples"> Examples </a>
+  </h4>
+</div>
+
 # downloader-rs
 a simple file downloader for rust
 

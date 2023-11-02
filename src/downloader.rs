@@ -77,6 +77,7 @@ pub struct DownloadOptions {
 pub struct Downloader {
     config: Arc<Mutex<DownloadConfiguration>>,
     download_status: Arc<Mutex<DownloaderStatus>>,
+    chunk_hub: Arc<Mutex<ChunkHub>>,
     pub download_handle: Arc<Mutex<DownloadHandle>>,
     options: Arc<Mutex<DownloadOptions>>,
 }
@@ -92,7 +93,8 @@ impl Downloader {
             download_handle = DownloadHandle::File(DownloadHandleFile::new(config.clone()))
         }
         let mut downloader = Downloader {
-            config,
+            config: config.clone(),
+            chunk_hub: Arc::new(Mutex::new(ChunkHub::new(config.clone()))),
             download_handle: Arc::new(Mutex::new(download_handle)),
             download_status: Arc::new(Mutex::new(DownloaderStatus::None)),
             options: Arc::new(Mutex::new(DownloadOptions {
@@ -105,6 +107,7 @@ impl Downloader {
     pub fn start_download(&mut self) {
         spawn(async_start_download(
             self.config.clone(),
+            self.chunk_hub.clone(),
             self.options.clone(),
             self.download_status.clone(),
             self.download_handle.clone()));
@@ -183,10 +186,19 @@ impl Downloader {
         self.options.blocking_lock().cancel = true;
         *self.download_status.blocking_lock() = DownloaderStatus::Stop;
     }
+
+    pub fn get_chunk_count(&self) -> usize {
+        return self.chunk_hub.blocking_lock().get_chunk_count();
+    }
+
+    pub fn get_chunk_progress(&self, index: usize) -> f64 {
+        return self.chunk_hub.blocking_lock().get_chunk_progress(index);
+    }
 }
 
 async fn async_start_download(
     config: Arc<Mutex<DownloadConfiguration>>,
+    chunk_hub: Arc<Mutex<ChunkHub>>,
     options: Arc<Mutex<DownloadOptions>>,
     status: Arc<Mutex<DownloaderStatus>>,
     download_handle: Arc<Mutex<DownloadHandle>>) {
@@ -229,29 +241,31 @@ async fn async_start_download(
         return;
     }
 
-    let mut chunk_hub = ChunkHub::new(config.clone());
-    chunk_hub.validate(download_handle.clone()).await;
-
-    let handles = chunk_hub.start_download(options.clone());
-    for handle in handles {
-        match handle.await {
-            Ok(result) => {
-                if let Err(e) = result {
-                    println!("error: {}", e);
+    {
+        chunk_hub.lock().await.validate(download_handle.clone()).await;
+        let handles = chunk_hub.lock().await.start_download(options.clone());
+        for handle in handles {
+            match handle.await {
+                Ok(result) => {
+                    if let Err(e) = result {
+                        println!("error: {}", e);
+                        *status.lock().await = DownloaderStatus::Failed;
+                        return;
+                    }
+                }
+                Err(e) => {
                     *status.lock().await = DownloaderStatus::Failed;
                     return;
                 }
-            }
-            Err(e) => {
-                *status.lock().await = DownloaderStatus::Failed;
-                return;
             }
         }
     }
 
     {
         *status.lock().await = DownloaderStatus::DownloadPost;
-        chunk_hub.on_download_post().await;
+        if let Err(e) = chunk_hub.lock().await.on_download_post().await {
+            println!("error: {}", e);
+        }
     }
 
 

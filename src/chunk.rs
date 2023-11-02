@@ -95,6 +95,15 @@ impl Chunk {
         self.position = self.start + chunk_length;
         self.valid = self.position == self.end + 1;
     }
+
+    pub fn get_progress(&self) -> f64 {
+        if self.end == 0 {
+            return 0f64;
+        }
+        let total_length = (self.end - self.start + 1) as f64;
+        let downloaded_size = (self.position - self.start) as f64;
+        return (downloaded_size / total_length).clamp(0f64, 1f64);
+    }
 }
 
 pub async fn start_download(

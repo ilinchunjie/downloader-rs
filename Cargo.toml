@@ -8,7 +8,7 @@ homepage = "https://github.com/ilinchunjie/downloader-rs"
 documentation = "https://github.com/ilinchunjie/downloader-rs"
 repository = "https://github.com/ilinchunjie/downloader-rs"
 readme = "README.md"
-exclude = ["/.github", "/.idea"]
+exclude = ["/.github", "/.idea", "/res"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
