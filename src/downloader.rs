@@ -15,7 +15,7 @@ use crate::remote_file::{RemoteFile, RemoteFileInfo};
 #[derive(PartialEq, Clone, Copy)]
 pub enum DownloaderStatus {
     None,
-    Pendding,
+    Pending,
     Head,
     Download,
     Archive,
@@ -28,7 +28,7 @@ impl Display for DownloaderStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             DownloaderStatus::None => write!(f, "None"),
-            DownloaderStatus::Pendding => write!(f, "Pendding"),
+            DownloaderStatus::Pending => write!(f, "Pending"),
             DownloaderStatus::Head => write!(f, "Head"),
             DownloaderStatus::Download => write!(f, "Download"),
             DownloaderStatus::Archive => write!(f, "Archive"),
@@ -43,7 +43,7 @@ impl Into<u8> for DownloaderStatus {
     fn into(self) -> u8 {
         match self {
             DownloaderStatus::None => 0,
-            DownloaderStatus::Pendding => 1,
+            DownloaderStatus::Pending => 1,
             DownloaderStatus::Head => 2,
             DownloaderStatus::Download => 3,
             DownloaderStatus::Archive => 4,
@@ -58,7 +58,7 @@ impl From<u8> for DownloaderStatus {
     fn from(value: u8) -> Self {
         match value {
             0 => DownloaderStatus::None,
-            1 => DownloaderStatus::Pendding,
+            1 => DownloaderStatus::Pending,
             2 => DownloaderStatus::Head,
             3 => DownloaderStatus::Download,
             4 => DownloaderStatus::Archive,
@@ -167,8 +167,16 @@ impl Downloader {
         return *self.download_status.blocking_lock() == DownloaderStatus::Failed;
     }
 
-    pub fn start(&mut self) {
-        *self.download_status.blocking_lock() = DownloaderStatus::Pendding;
+    pub fn is_pending(&self) -> bool {
+        return *self.download_status.blocking_lock() == DownloaderStatus::Pending;
+    }
+
+    pub async fn is_pending_async(&self) -> bool {
+        return *self.download_status.lock().await == DownloaderStatus::Pending;
+    }
+
+    pub fn pending(&mut self) {
+        *self.download_status.blocking_lock() = DownloaderStatus::Pending;
     }
 
     pub fn stop(&mut self) {

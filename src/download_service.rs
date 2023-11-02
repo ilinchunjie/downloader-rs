@@ -51,7 +51,7 @@ impl DownloadService {
                     if downloading_count < *parallel_count.lock().await {
                         if let Some(downloader) = queue.lock().await.pop_front() {
                             let downloader_clone = downloader.clone();
-                            if downloader.lock().await.is_stop_async().await {
+                            if !downloader.lock().await.is_pending_async().await {
                                 continue;
                             }
                             &mut downloadings.push(downloader_clone);
@@ -82,7 +82,8 @@ impl DownloadService {
     }
 
     pub fn add_downloader(&mut self, config: DownloadConfiguration) -> DownloadOperation {
-        let downloader = Downloader::new(config);
+        let mut downloader = Downloader::new(config);
+        downloader.pending();
         let downloader = Arc::new(Mutex::new(downloader));
         self.download_queue.blocking_lock().push_front(downloader.clone());
         let operation = DownloadOperation::new(downloader.clone());

@@ -67,7 +67,7 @@ impl DownloadConfigurationBuilder {
         let path = Path::new(self.config.path.as_ref().unwrap().deref());
         if let Some(directory) = path.parent() {
             if !directory.exists() {
-                let result = fs::create_dir(directory);
+                let result = fs::create_dir_all(directory);
                 if let Err(e) = result {
                     panic!("{}", e);
                 }
