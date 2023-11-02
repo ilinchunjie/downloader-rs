@@ -62,7 +62,7 @@ impl RemoteFile {
                 Ok(RemoteFileInfo::new(headers))
             }
             Err(e) => {
-                return Err(e)
+                return Err(e);
             }
         }
     }

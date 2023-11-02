@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::error::Error;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
@@ -97,6 +98,7 @@ impl ChunkHub {
         let mut chunk_count = 1;
         if config.support_range_download && config.chunk_download {
             chunk_count = (config.total_length as f64 / config.chunk_size as f64).ceil() as u16;
+            chunk_count = chunk_count.max(1);
         }
 
         let mut chunk_metadata: Option<ChunkMetadata>;
@@ -112,11 +114,15 @@ impl ChunkHub {
         match chunk_count {
             1 => {
                 let mut chunk: Chunk;
+                let mut end = 0u64;
+                if config.total_length > 0 {
+                    end = config.total_length - 1;
+                }
                 if config.download_in_memory {
-                    chunk = self.from_memory_chunk(download_handle.clone(), config.support_range_download, 0, config.total_length - 1, 0, 0, config.remote_version, false);
+                    chunk = self.from_memory_chunk(download_handle.clone(), config.support_range_download, 0, end, 0, 0, config.remote_version, false);
                 } else {
                     let chunk_metadata = Arc::new(Mutex::new(chunk_metadata.unwrap()));
-                    chunk = self.from_file_chunk(download_handle.clone(), chunk_metadata, config.support_range_download, 0, config.total_length - 1, 0, 0, config.remote_version, false);
+                    chunk = self.from_file_chunk(download_handle.clone(), chunk_metadata, config.support_range_download, 0, end, 0, 0, config.remote_version, false);
                     chunk.validate().await;
                 }
                 chunk.set_downloaded_size().await;
