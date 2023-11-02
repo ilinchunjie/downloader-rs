@@ -7,7 +7,7 @@ use tokio::{fs, spawn};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use crate::chunk;
-use crate::chunk::{Chunk};
+use crate::chunk::{Chunk, ChunkRange};
 use crate::chunk_metadata::ChunkMetadata;
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_handle::DownloadHandle;
@@ -52,56 +52,33 @@ impl ChunkHub {
         return 0;
     }
 
-    pub fn get_chunk_progress(&self, index: usize) -> f64 {
+    pub fn get_chunk_range(&self, index: usize) -> Option<ChunkRange> {
         if let Some(chunks) = &self.chunks {
             if let Some(chunk) = chunks.get(index) {
-                return chunk.blocking_lock().get_progress();
+                return Some(chunk.blocking_lock().chunk_range());
             }
         }
-        return 0f64;
+        return None;
     }
 
-    fn from_file_chunk(
-        &self,
-        download_handle: Arc<Mutex<DownloadHandle>>,
-        chunk_metadata: Arc<Mutex<ChunkMetadata>>,
-        range_download: bool,
-        start: u64,
-        end: u64,
-        position: u64,
-        index: u16,
-        version: i64,
-        valid: bool) -> Chunk {
+    fn from_file_chunk(&self, download_handle: Arc<Mutex<DownloadHandle>>, chunk_metadata: Arc<Mutex<ChunkMetadata>>, range_download: bool, chunk_range: ChunkRange, index: u16, version: i64, valid: bool) -> Chunk {
         Chunk {
             download_handle,
             chunk_metadata: Some(chunk_metadata),
             range_download,
-            start,
-            end,
-            position,
+            chunk_range,
             index,
             version,
             valid,
         }
     }
 
-    fn from_memory_chunk(
-        &self,
-        download_handle: Arc<Mutex<DownloadHandle>>,
-        range_download: bool,
-        start: u64,
-        end: u64,
-        position: u64,
-        index: u16,
-        version: i64,
-        valid: bool) -> Chunk {
+    fn from_memory_chunk(&self, download_handle: Arc<Mutex<DownloadHandle>>, range_download: bool, chunk_range: ChunkRange, index: u16, version: i64, valid: bool) -> Chunk {
         Chunk {
             download_handle,
             chunk_metadata: None,
             range_download,
-            start,
-            end,
-            position,
+            chunk_range,
             index,
             version,
             valid,
@@ -134,11 +111,12 @@ impl ChunkHub {
                 if config.total_length > 0 {
                     end = config.total_length - 1;
                 }
+                let chunk_range = ChunkRange::from_start_end(0, end);
                 if config.download_in_memory {
-                    chunk = self.from_memory_chunk(download_handle.clone(), config.support_range_download, 0, end, 0, 0, config.remote_version, false);
+                    chunk = self.from_memory_chunk(download_handle.clone(), config.support_range_download, chunk_range, 0, config.remote_version, false);
                 } else {
                     let chunk_metadata = Arc::new(Mutex::new(chunk_metadata.unwrap()));
-                    chunk = self.from_file_chunk(download_handle.clone(), chunk_metadata, config.support_range_download, 0, end, 0, 0, config.remote_version, false);
+                    chunk = self.from_file_chunk(download_handle.clone(), chunk_metadata, config.support_range_download, chunk_range, 0, config.remote_version, false);
                     chunk.validate().await;
                 }
                 chunk.set_downloaded_size().await;
@@ -153,12 +131,12 @@ impl ChunkHub {
                     if i == chunk_count - 1 {
                         end_position = start_position + config.total_length % config.chunk_size - 1;
                     }
-
+                    let chunk_range = ChunkRange::from_start_end(start_position, end_position);
                     let mut chunk: Chunk;
                     if config.download_in_memory {
-                        chunk = self.from_memory_chunk(download_handle.clone(), true, start_position, end_position, start_position, i, config.remote_version, false);
+                        chunk = self.from_memory_chunk(download_handle.clone(), true, chunk_range, i, config.remote_version, false);
                     } else {
-                        chunk = self.from_file_chunk(download_handle.clone(), chunk_metadata.clone(), true, start_position, end_position, start_position, i, config.remote_version, false);
+                        chunk = self.from_file_chunk(download_handle.clone(), chunk_metadata.clone(), true, chunk_range, i, config.remote_version, false);
                         chunk.validate().await;
                     }
                     chunk.set_downloaded_size().await;

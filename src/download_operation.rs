@@ -1,5 +1,6 @@
 use std::sync::{Arc};
 use tokio::sync::Mutex;
+use crate::chunk::ChunkRange;
 use crate::downloader::Downloader;
 
 #[derive(Clone)]
@@ -43,8 +44,20 @@ impl DownloadOperation {
         return self.downloader.blocking_lock().get_chunk_count();
     }
 
+    pub fn chunk_range(&self, index: usize) -> Option<ChunkRange> {
+        return self.downloader.blocking_lock().get_chunk_range(index);
+    }
+
     pub fn chunk_progress(&self, index: usize) -> f64 {
-        return self.downloader.blocking_lock().get_chunk_progress(index);
+        if let Some(chunk_range) = self.chunk_range(index) {
+            if chunk_range.end == 0 {
+                return 0f64;
+            }
+            let total_length = chunk_range.chunk_length() as f64;
+            let downloaded_size = chunk_range.length() as f64;
+            return (downloaded_size / total_length).clamp(0f64, 1f64);
+        }
+        return 0f64;
     }
 
     pub fn is_done(&self) -> bool {

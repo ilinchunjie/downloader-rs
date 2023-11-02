@@ -5,6 +5,7 @@ use std::sync::{Arc};
 use bytes::Buf;
 use tokio::spawn;
 use tokio::sync::Mutex;
+use crate::chunk::ChunkRange;
 use crate::chunk_hub::ChunkHub;
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_handle::{DownloadHandle, DownloadHandleTrait};
@@ -191,8 +192,8 @@ impl Downloader {
         return self.chunk_hub.blocking_lock().get_chunk_count();
     }
 
-    pub fn get_chunk_progress(&self, index: usize) -> f64 {
-        return self.chunk_hub.blocking_lock().get_chunk_progress(index);
+    pub fn get_chunk_range(&self, index: usize) -> Option<ChunkRange> {
+        return self.chunk_hub.blocking_lock().get_chunk_range(index);
     }
 }
 
