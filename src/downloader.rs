@@ -250,10 +250,8 @@ async fn async_start_download(
     }
 
     {
-        if config.lock().await.create_temp_file {
-            *status.lock().await = DownloaderStatus::DownloadPost;
-            chunk_hub.on_download_post().await;
-        }
+        *status.lock().await = DownloaderStatus::DownloadPost;
+        chunk_hub.on_download_post().await;
     }
 
 
