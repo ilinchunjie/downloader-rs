@@ -31,3 +31,7 @@ a simple file downloader for rust
 - [ ] md5/xxHash file verification
 
 # Welcome to submit pull requests.
+
+# Preview
+
+![gif](https://github.com/ilinchunjie/downloader-rs/blob/main/res/download.gif)
