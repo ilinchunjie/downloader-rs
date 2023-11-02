@@ -6,6 +6,7 @@ mod chunk_metadata;
 mod chunk_hub;
 mod download_handle_file;
 mod download_handle_memory;
+pub mod file_verify;
 pub mod download_configuration;
 pub mod download_service;
 pub mod downloader;

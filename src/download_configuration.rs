@@ -2,6 +2,7 @@ use std::fs;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use crate::file_verify::FileVerify;
 
 pub struct DownloadConfiguration {
     pub url: Option<Arc<String>>,
@@ -9,13 +10,13 @@ pub struct DownloadConfiguration {
     pub chunk_size: u64,
     pub total_length: u64,
     pub remote_version: i64,
-    pub remote_file_hash: u64,
     pub retry_times_on_failure: u8,
     pub download_in_memory: bool,
     pub support_range_download: bool,
     pub set_file_length: bool,
     pub chunk_download: bool,
     pub create_temp_file: bool,
+    pub file_verify: FileVerify,
 }
 
 pub struct DownloadConfigurationBuilder {
@@ -54,13 +55,18 @@ impl DownloadConfigurationBuilder {
         self
     }
 
-    pub fn set_file_length(mut self)  -> DownloadConfigurationBuilder {
+    pub fn set_file_length(mut self) -> DownloadConfigurationBuilder {
         self.config.set_file_length = true;
         self
     }
 
     pub fn set_retry_times_on_failure(mut self, retry_times: u8) -> DownloadConfigurationBuilder {
         self.config.retry_times_on_failure = retry_times;
+        self
+    }
+
+    pub fn set_file_verify(mut self, file_verify: FileVerify) -> DownloadConfigurationBuilder {
+        self.config.file_verify = file_verify;
         self
     }
 
@@ -108,12 +114,12 @@ impl DownloadConfiguration {
         let config = DownloadConfiguration {
             url: None,
             path: None,
+            file_verify: FileVerify::None,
             support_range_download: false,
             chunk_download: false,
             chunk_size: 1024 * 1024 * 5,
             total_length: 0,
             remote_version: 0,
-            remote_file_hash: 0,
             download_in_memory: false,
             set_file_length: false,
             retry_times_on_failure: 0,

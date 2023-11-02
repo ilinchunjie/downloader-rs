@@ -6,13 +6,14 @@ use std::sync::{Arc};
 use tokio::{fs, spawn};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use crate::chunk;
+use crate::{chunk, file_verify};
 use crate::chunk::{Chunk, ChunkRange};
 use crate::chunk_metadata::ChunkMetadata;
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_handle::DownloadHandle;
 use crate::downloader::DownloadOptions;
 use crate::error::DownloadError;
+use crate::file_verify::FileVerify;
 
 pub struct ChunkHub {
     config: Arc<Mutex<DownloadConfiguration>>,
@@ -146,6 +147,47 @@ impl ChunkHub {
             }
         }
         self.chunks = Some(chunks);
+    }
+
+    pub async fn calculate_file_hash(&self) -> crate::error::Result<()> {
+        let config = self.config.lock().await;
+
+        if config.file_verify == FileVerify::None {
+            return Ok(());
+        }
+
+        let mut temp_file_path: String;
+        if config.create_temp_file {
+            temp_file_path = format!("{}.temp", config.path.as_ref().unwrap().deref());
+        } else {
+            temp_file_path = config.path.as_ref().unwrap().deref().to_string();
+        }
+
+        match &config.file_verify {
+            FileVerify::None => {
+                return Ok(());
+            }
+            #[cfg(feature = "xxhash-rust")]
+            FileVerify::xxHash(value) => {
+                {
+                    let hash = file_verify::calculate_file_xxhash(&temp_file_path, 0).await?;
+                    if !hash.eq(&value) {
+                        return Err(DownloadError::FileVerify);
+                    }
+                }
+            }
+            #[cfg(feature = "md5")]
+            FileVerify::MD5(value) => {
+                {
+                    let hash = file_verify::calculate_file_md5(&temp_file_path).await?;
+                    if !hash.eq(value) {
+                        return Err(DownloadError::FileVerify);
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn on_download_post(&self) -> crate::error::Result<()> {

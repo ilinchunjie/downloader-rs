@@ -12,6 +12,10 @@ exclude = ["/.github", "/.idea", "/res"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+xxhash-rust = ["dep:xxhash-rust"]
+md5 = ["dep:md5"]
+
 [dependencies]
 tokio = { version = "1.32.0", features = ["full"] }
 reqwest = { version = "0.11.20", features = ["stream"] }
@@ -19,6 +23,12 @@ bytes = { version = "1.5.0" }
 futures = { version = "0.3.28" }
 chrono = { version = "0.4.31" }
 async-trait = { version = "0.1.74" }
+
+# optional dependencies
+
+## file_verify
+xxhash-rust = { version = "0.8.7", features = ["xxh64"], optional = true }
+md5 = { version = "0.7.0", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 openssl = { version = "0.10.57", features = ["vendored"] }

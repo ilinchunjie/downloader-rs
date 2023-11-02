@@ -19,6 +19,7 @@ pub enum DownloaderStatus {
     Pending,
     Head,
     Download,
+    FileVerify,
     DownloadPost,
     Complete,
     Failed,
@@ -32,6 +33,7 @@ impl Display for DownloaderStatus {
             DownloaderStatus::Pending => write!(f, "Pending"),
             DownloaderStatus::Head => write!(f, "Head"),
             DownloaderStatus::Download => write!(f, "Download"),
+            DownloaderStatus::FileVerify => write!(f, "FileVerify"),
             DownloaderStatus::DownloadPost => write!(f, "DownloadPost"),
             DownloaderStatus::Complete => write!(f, "Complete"),
             DownloaderStatus::Failed => write!(f, "Failed"),
@@ -47,10 +49,11 @@ impl Into<u8> for DownloaderStatus {
             DownloaderStatus::Pending => 1,
             DownloaderStatus::Head => 2,
             DownloaderStatus::Download => 3,
-            DownloaderStatus::DownloadPost => 4,
-            DownloaderStatus::Complete => 5,
-            DownloaderStatus::Failed => 6,
-            DownloaderStatus::Stop => 7
+            DownloaderStatus::FileVerify => 4,
+            DownloaderStatus::DownloadPost => 5,
+            DownloaderStatus::Complete => 6,
+            DownloaderStatus::Failed => 7,
+            DownloaderStatus::Stop => 8
         }
     }
 }
@@ -62,10 +65,11 @@ impl From<u8> for DownloaderStatus {
             1 => DownloaderStatus::Pending,
             2 => DownloaderStatus::Head,
             3 => DownloaderStatus::Download,
-            4 => DownloaderStatus::DownloadPost,
-            5 => DownloaderStatus::Complete,
-            6 => DownloaderStatus::Failed,
-            7 => DownloaderStatus::Stop,
+            4 => DownloaderStatus::FileVerify,
+            5 => DownloaderStatus::DownloadPost,
+            6 => DownloaderStatus::Complete,
+            7 => DownloaderStatus::Failed,
+            8 => DownloaderStatus::Stop,
             _ => DownloaderStatus::None,
         }
     }
@@ -263,9 +267,20 @@ async fn async_start_download(
     }
 
     {
+        *status.lock().await = DownloaderStatus::FileVerify;
+        if let Err(e) = chunk_hub.lock().await.calculate_file_hash().await {
+            println!("File verification failed");
+            *status.lock().await = DownloaderStatus::Failed;
+            return;
+        }
+    }
+
+    {
         *status.lock().await = DownloaderStatus::DownloadPost;
         if let Err(e) = chunk_hub.lock().await.on_download_post().await {
             println!("error: {}", e);
+            *status.lock().await = DownloaderStatus::Failed;
+            return;
         }
     }
 

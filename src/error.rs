@@ -2,6 +2,7 @@ use std::fmt::{Display, Formatter, write};
 
 pub enum DownloadError {
     FileSetLength(String),
+    FileOpen,
     FileSeek,
     FileWrite,
     FileFlush,
@@ -15,6 +16,7 @@ pub enum DownloadError {
     ResponseChunk,
     OpenOrCreateFile,
     CreateMetaFile(String),
+    FileVerify
 }
 
 pub type Result<T> = core::result::Result<T, DownloadError>;
@@ -25,6 +27,7 @@ impl Display for DownloadError {
             DownloadError::FileSetLength(message) => {
                 write!(f, "{}", message)
             }
+            DownloadError::FileOpen => { write!(f, "") }
             DownloadError::FileSeek => { write!(f, "") }
             DownloadError::FileWrite => { write!(f, "") }
             DownloadError::FileFlush => { write!(f, "") }
@@ -39,6 +42,9 @@ impl Display for DownloadError {
             DownloadError::OpenOrCreateFile => { write!(f, "") }
             DownloadError::CreateMetaFile(message) => {
                 write!(f, "{}", message)
+            }
+            DownloadError::FileVerify => {
+                write!(f, "")
             }
         }
     }
