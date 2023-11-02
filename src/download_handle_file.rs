@@ -35,7 +35,12 @@ impl DownloadHandleFile {
 impl DownloadHandleTrait for DownloadHandleFile {
     async fn setup(&mut self) -> crate::error::Result<()> {
         let config = self.config.lock().await;
-        let path = PathBuf::from(config.path.as_ref().unwrap().deref());
+        let path: PathBuf;
+        if config.create_temp_file {
+            path = PathBuf::from(format!("{}.temp", config.path.as_ref().unwrap().deref()));
+        } else {
+            path = PathBuf::from(config.path.as_ref().unwrap().deref());
+        }
         let append = !config.chunk_download && config.support_range_download || config.total_length == 0;
         let mut stream = Stream::new(path, append).await?;
         if config.set_file_length && config.total_length > 0 {

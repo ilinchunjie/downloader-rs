@@ -11,8 +11,8 @@ use crate::chunk::{Chunk};
 use crate::chunk_metadata::ChunkMetadata;
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_handle::DownloadHandle;
-use crate::downloader::DownloaderStatus::Archive;
 use crate::downloader::DownloadOptions;
+use crate::error::DownloadError;
 
 pub struct ChunkHub {
     config: Arc<Mutex<DownloadConfiguration>>,
@@ -152,6 +152,25 @@ impl ChunkHub {
             }
         }
         self.chunks = Some(chunks);
+    }
+
+    pub async fn on_download_post(&self) -> crate::error::Result<()> {
+        let config = self.config.lock().await;
+        if config.create_temp_file {
+            let temp_file = format!("{}.temp", config.path.as_ref().unwrap().deref());
+            if let Err(e) = fs::rename(temp_file, config.path.as_ref().unwrap().deref()).await {
+                return Err(DownloadError::FileRename);
+            };
+        }
+
+        {
+            let meta_file = format!("{}.temp.meta", config.path.as_ref().unwrap().deref());
+            if let Err(e) = fs::remove_file(meta_file).await {
+                return Err(DownloadError::RemoveMetaFile);
+            };
+        }
+
+        Ok(())
     }
 }
 

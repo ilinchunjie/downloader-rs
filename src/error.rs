@@ -5,6 +5,8 @@ pub enum DownloadError {
     FileSeek,
     FileWrite,
     FileFlush,
+    FileRename,
+    RemoveMetaFile,
     MemorySeek,
     MemoryWrite,
     MemoryFlush,
@@ -26,6 +28,8 @@ impl Display for DownloadError {
             DownloadError::FileSeek => { write!(f, "") }
             DownloadError::FileWrite => { write!(f, "") }
             DownloadError::FileFlush => { write!(f, "") }
+            DownloadError::FileRename => { write!(f, "") }
+            DownloadError::RemoveMetaFile => { write!(f, "") }
             DownloadError::MemorySeek => { write!(f, "") }
             DownloadError::MemoryWrite => { write!(f, "") }
             DownloadError::MemoryFlush => { write!(f, "") }

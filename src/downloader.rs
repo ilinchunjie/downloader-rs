@@ -18,7 +18,7 @@ pub enum DownloaderStatus {
     Pending,
     Head,
     Download,
-    Archive,
+    DownloadPost,
     Complete,
     Failed,
     Stop,
@@ -31,7 +31,7 @@ impl Display for DownloaderStatus {
             DownloaderStatus::Pending => write!(f, "Pending"),
             DownloaderStatus::Head => write!(f, "Head"),
             DownloaderStatus::Download => write!(f, "Download"),
-            DownloaderStatus::Archive => write!(f, "Archive"),
+            DownloaderStatus::DownloadPost => write!(f, "DownloadPost"),
             DownloaderStatus::Complete => write!(f, "Complete"),
             DownloaderStatus::Failed => write!(f, "Failed"),
             DownloaderStatus::Stop => write!(f, "Stop"),
@@ -46,7 +46,7 @@ impl Into<u8> for DownloaderStatus {
             DownloaderStatus::Pending => 1,
             DownloaderStatus::Head => 2,
             DownloaderStatus::Download => 3,
-            DownloaderStatus::Archive => 4,
+            DownloaderStatus::DownloadPost => 4,
             DownloaderStatus::Complete => 5,
             DownloaderStatus::Failed => 6,
             DownloaderStatus::Stop => 7
@@ -61,7 +61,7 @@ impl From<u8> for DownloaderStatus {
             1 => DownloaderStatus::Pending,
             2 => DownloaderStatus::Head,
             3 => DownloaderStatus::Download,
-            4 => DownloaderStatus::Archive,
+            4 => DownloaderStatus::DownloadPost,
             5 => DownloaderStatus::Complete,
             6 => DownloaderStatus::Failed,
             7 => DownloaderStatus::Stop,
@@ -248,6 +248,14 @@ async fn async_start_download(
             }
         }
     }
+
+    {
+        if config.lock().await.create_temp_file {
+            *status.lock().await = DownloaderStatus::DownloadPost;
+            chunk_hub.on_download_post().await;
+        }
+    }
+
 
     if options.lock().await.cancel {
         return;

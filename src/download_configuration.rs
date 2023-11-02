@@ -15,6 +15,7 @@ pub struct DownloadConfiguration {
     pub support_range_download: bool,
     pub set_file_length: bool,
     pub chunk_download: bool,
+    pub create_temp_file: bool,
 }
 
 pub struct DownloadConfigurationBuilder {
@@ -60,6 +61,11 @@ impl DownloadConfigurationBuilder {
 
     pub fn set_retry_times_on_failure(mut self, retry_times: u8) -> DownloadConfigurationBuilder {
         self.config.retry_times_on_failure = retry_times;
+        self
+    }
+
+    pub fn create_temp_file(mut self, create_temp_file: bool) -> DownloadConfigurationBuilder {
+        self.config.create_temp_file = create_temp_file;
         self
     }
 
@@ -111,6 +117,7 @@ impl DownloadConfiguration {
             download_in_memory: false,
             set_file_length: false,
             retry_times_on_failure: 0,
+            create_temp_file: true,
         };
         DownloadConfigurationBuilder::new(config)
     }
