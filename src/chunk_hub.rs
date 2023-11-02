@@ -1,7 +1,5 @@
-use std::cmp::max;
-use std::error::Error;
 use std::ops::Deref;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use std::sync::{Arc};
 use tokio::{fs, spawn};
 use tokio::sync::Mutex;
@@ -95,7 +93,7 @@ impl ChunkHub {
             chunk_count = chunk_count.max(1);
         }
 
-        let mut chunk_metadata: Option<ChunkMetadata>;
+        let chunk_metadata: Option<ChunkMetadata>;
         if config.download_in_memory {
             chunk_metadata = None;
         } else {
@@ -156,7 +154,7 @@ impl ChunkHub {
             return Ok(());
         }
 
-        let mut temp_file_path: String;
+        let temp_file_path: String;
         if config.create_temp_file {
             temp_file_path = format!("{}.temp", config.path.as_ref().unwrap().deref());
         } else {
@@ -194,14 +192,14 @@ impl ChunkHub {
         let config = self.config.lock().await;
         if config.create_temp_file {
             let temp_file = format!("{}.temp", config.path.as_ref().unwrap().deref());
-            if let Err(e) = fs::rename(temp_file, config.path.as_ref().unwrap().deref()).await {
+            if let Err(_) = fs::rename(temp_file, config.path.as_ref().unwrap().deref()).await {
                 return Err(DownloadError::FileRename);
             };
         }
 
         {
             let meta_file = format!("{}.temp.meta", config.path.as_ref().unwrap().deref());
-            if let Err(e) = fs::remove_file(meta_file).await {
+            if let Err(_) = fs::remove_file(meta_file).await {
                 return Err(DownloadError::RemoveMetaFile);
             };
         }
@@ -216,7 +214,7 @@ async fn start_download_chunks(
     options: Arc<Mutex<DownloadOptions>>,
 ) -> crate::error::Result<()> {
     {
-        let mut chunk = chunk.lock().await;
+        let chunk = chunk.lock().await;
         if chunk.valid {
             return Ok(());
         }

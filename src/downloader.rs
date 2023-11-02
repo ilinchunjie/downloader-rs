@@ -1,8 +1,6 @@
-use std::any::Any;
-use std::fmt::{Display, Formatter, write};
-use std::ops::{Deref, DerefMut};
+use std::fmt::{Display, Formatter};
+use std::ops::{DerefMut};
 use std::sync::{Arc};
-use bytes::Buf;
 use tokio::spawn;
 use tokio::sync::Mutex;
 use crate::chunk::ChunkRange;
@@ -91,13 +89,13 @@ impl Downloader {
     pub fn new(config: DownloadConfiguration) -> Downloader {
         let download_in_memory = config.download_in_memory;
         let config = Arc::new(Mutex::new(config));
-        let mut download_handle: DownloadHandle;
+        let download_handle: DownloadHandle;
         if download_in_memory {
             download_handle = DownloadHandle::Memory(DownloadHandleMemory::new(config.clone()))
         } else {
             download_handle = DownloadHandle::File(DownloadHandleFile::new(config.clone()))
         }
-        let mut downloader = Downloader {
+        let downloader = Downloader {
             config: config.clone(),
             chunk_hub: Arc::new(Mutex::new(ChunkHub::new(config.clone()))),
             download_handle: Arc::new(Mutex::new(download_handle)),
@@ -216,12 +214,12 @@ async fn async_start_download(
     }
 
     let mut remote_file = RemoteFile::new(config.lock().await.url.as_ref().unwrap().clone());
-    let mut remote_file_info: Option<RemoteFileInfo> = None;
+    let remote_file_info: Option<RemoteFileInfo>;
     match remote_file.head().await {
         Ok(value) => {
             remote_file_info = Some(value);
         }
-        Err(e) => {
+        Err(_) => {
             *status.lock().await = DownloaderStatus::Failed;
             return;
         }
@@ -258,7 +256,7 @@ async fn async_start_download(
                         return;
                     }
                 }
-                Err(e) => {
+                Err(_) => {
                     *status.lock().await = DownloaderStatus::Failed;
                     return;
                 }
@@ -268,7 +266,7 @@ async fn async_start_download(
 
     {
         *status.lock().await = DownloaderStatus::FileVerify;
-        if let Err(e) = chunk_hub.lock().await.calculate_file_hash().await {
+        if let Err(_) = chunk_hub.lock().await.calculate_file_hash().await {
             println!("File verification failed");
             *status.lock().await = DownloaderStatus::Failed;
             return;

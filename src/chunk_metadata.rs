@@ -1,4 +1,3 @@
-use std::fmt::format;
 use std::io::SeekFrom;
 use std::mem;
 use std::path::PathBuf;
@@ -25,13 +24,13 @@ impl ChunkMetadata {
     pub async fn create_chunk_metadata(&mut self) -> crate::error::Result<()> {
         match OpenOptions::new().write(true).create(true).open(&self.path.as_path()).await {
             Ok(mut meta_file) => {
-                meta_file.write(&self.version.to_le_bytes()).await;
-                meta_file.write(&self.chunk_count.to_le_bytes()).await;
-                for i in 0..self.chunk_count {
-                    meta_file.write(&(0 as u64).to_le_bytes()).await;
+                let _ =meta_file.write(&self.version.to_le_bytes()).await;
+                let _ =meta_file.write(&self.chunk_count.to_le_bytes()).await;
+                for _ in 0..self.chunk_count {
+                    let _ =meta_file.write(&(0 as u64).to_le_bytes()).await;
                 }
-                meta_file.set_len(self.get_metadata_length());
-                meta_file.flush().await;
+                let _ =meta_file.set_len(self.get_metadata_length());
+                let _ =meta_file.flush().await;
                 self.file = Some(meta_file);
             }
             Err(e) => {
@@ -43,7 +42,7 @@ impl ChunkMetadata {
     }
 
     pub async fn get_chunk_metadata(path: Arc<PathBuf>, chunk_count: u16) -> ChunkMetadata {
-        let mut chunk_positions = Vec::with_capacity(chunk_count as usize);
+        let chunk_positions = Vec::with_capacity(chunk_count as usize);
         let file_path = path.as_path();
         let mut chunk_metadata = ChunkMetadata {
             path: path.clone(),
@@ -67,15 +66,15 @@ impl ChunkMetadata {
                     }
                 }
 
-                for i in 0..chunk_metadata.chunk_count {
+                for _ in 0..chunk_metadata.chunk_count {
                     let mut chunk_position = 0u64;
                     if let Ok(position) = meta_file.read_u64_le().await {
                         chunk_position = position;
                     }
                     chunk_metadata.chunk_positions.push(chunk_position);
                 }
-                meta_file.set_len(chunk_metadata.get_metadata_length()).await;
-                meta_file.flush().await;
+                let _ =meta_file.set_len(chunk_metadata.get_metadata_length()).await;
+                let _ =meta_file.flush().await;
                 chunk_metadata.file = Some(meta_file);
             }
         }
@@ -87,9 +86,9 @@ impl ChunkMetadata {
             self.create_chunk_metadata().await?;
         }
         if let Some(meta_file) = &mut self.file {
-            meta_file.seek(SeekFrom::Start(0)).await;
-            meta_file.write(&version.to_le_bytes()).await;
-            meta_file.flush().await;
+            let _ =meta_file.seek(SeekFrom::Start(0)).await;
+            let _ =meta_file.write(&version.to_le_bytes()).await;
+            let _ =meta_file.flush().await;
         }
 
         Ok(())
@@ -103,9 +102,9 @@ impl ChunkMetadata {
             let version_length = mem::size_of::<i64>();
             let count_length = mem::size_of::<u16>();
             let seek_position = version_length + count_length + chunk_index as usize * mem::size_of::<u64>();
-            meta_file.seek(SeekFrom::Start(seek_position as u64)).await;
-            meta_file.write(&position.to_le_bytes()).await;
-            meta_file.flush().await;
+            let _ =meta_file.seek(SeekFrom::Start(seek_position as u64)).await;
+            let _ =meta_file.write(&position.to_le_bytes()).await;
+            let _ = meta_file.flush().await;
         }
 
         Ok(())

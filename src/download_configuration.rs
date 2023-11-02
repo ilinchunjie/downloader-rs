@@ -1,6 +1,6 @@
 use std::fs;
 use std::ops::Deref;
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 use std::sync::Arc;
 use crate::file_verify::FileVerify;
 
@@ -75,20 +75,20 @@ impl DownloadConfigurationBuilder {
         self
     }
 
-    pub fn create_dir(mut self) -> DownloadConfigurationBuilder {
+    pub fn create_dir(self) -> DownloadConfigurationBuilder {
         let path = Path::new(self.config.path.as_ref().unwrap().deref());
         if let Some(directory) = path.parent() {
             if !directory.exists() {
                 let result = fs::create_dir_all(directory);
-                if let Err(e) = result {
-                    panic!("{}", e);
+                if let Err(_e) = result {
+                    panic!("{}", _e);
                 }
             }
         }
         self
     }
 
-    pub fn build(mut self) -> DownloadConfiguration {
+    pub fn build(self) -> DownloadConfiguration {
         self.validate()
     }
 

@@ -2,7 +2,6 @@ use std::ffi::{c_char, CStr};
 use downloader_rs::download_configuration::DownloadConfiguration;
 use downloader_rs::download_operation::DownloadOperation;
 use downloader_rs::download_service::DownloadService;
-use downloader_rs::downloader::Downloader;
 
 #[repr(C)]
 pub struct DownloadConfig {

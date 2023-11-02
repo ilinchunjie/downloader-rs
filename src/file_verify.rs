@@ -1,4 +1,3 @@
-use std::io::Write;
 #[cfg(feature = "xxhash-rust")]
 use xxhash_rust::xxh64;
 #[cfg(feature = "md5")]
@@ -11,6 +10,7 @@ use crate::error::DownloadError;
 #[derive(PartialEq)]
 pub enum FileVerify {
     None,
+    #[allow(non_camel_case_types)]
     #[cfg(feature = "xxhash-rust")]
     xxHash(u64),
     #[cfg(feature = "md5")]
@@ -36,7 +36,7 @@ pub async fn calculate_file_xxhash(file_path: &str, seed: u64) -> crate::error::
             }
             Ok(hasher.digest())
         }
-        Err(e) => {
+        Err(_) => {
             return Err(DownloadError::FileOpen);
         }
     }
@@ -61,7 +61,7 @@ pub async fn calculate_file_md5(file_path: &str) -> crate::error::Result<String>
             }
             Ok(format!("{:x}", context.compute()))
         }
-        Err(e) => {
+        Err(_) => {
             return Err(DownloadError::FileOpen);
         }
     }

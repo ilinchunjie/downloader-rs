@@ -1,8 +1,5 @@
-use std::error::Error;
-use std::fmt::{Debug};
-use std::ops::{Deref, DerefMut};
+use std::ops::{Deref};
 use std::sync::Arc;
-use std::time::Duration;
 use futures::StreamExt;
 use reqwest::header::RANGE;
 use tokio::sync::Mutex;
@@ -68,19 +65,19 @@ impl DownloadTask {
                                     let buffer = bytes.to_vec() as Vec<u8>;
                                     download_chunk.lock().await.received_bytes_async(&buffer).await?;
                                 }
-                                Err(e) => {
+                                Err(_e) => {
                                     return Err(DownloadError::ResponseChunk);
                                 }
                             }
                         }
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         return Err(DownloadError::Response);
                     }
                 }
                 Ok(())
             }
-            Err(e) => {
+            Err(_e) => {
                 return Err(DownloadError::Request);
             }
         }

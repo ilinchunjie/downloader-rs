@@ -1,9 +1,8 @@
 use std::ops::Deref;
 use std::sync::Arc;
-use std::time::Duration;
 use chrono::DateTime;
 use reqwest::Error;
-use reqwest::header::{HeaderMap, HeaderValue};
+use reqwest::header::{HeaderMap};
 
 pub struct RemoteFileInfo {
     pub total_length: u64,

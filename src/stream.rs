@@ -1,8 +1,7 @@
-use std::io::{Error, SeekFrom};
-use std::path::{Path, PathBuf};
-use tokio::fs;
+use std::io::{SeekFrom};
+use std::path::{PathBuf};
 use tokio::fs::{File, OpenOptions};
-use tokio::io::{AsyncSeek, AsyncSeekExt, AsyncWriteExt};
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use crate::error::DownloadError;
 
 pub struct Stream {
@@ -21,22 +20,22 @@ impl Stream {
                     file,
                 })
             }
-            Err(e) => {
+            Err(_e) => {
                 Err(DownloadError::OpenOrCreateFile)
             }
         }
     }
 
     pub async fn set_length(&mut self, length: u64) -> crate::error::Result<()> {
-        if let Err(e) = self.file.set_len(length).await {
-            return Err(DownloadError::FileSetLength(format!("set file length failed : {}", e)));
+        if let Err(_e) = self.file.set_len(length).await {
+            return Err(DownloadError::FileSetLength(format!("set file length failed : {}", _e)));
         }
 
         Ok(())
     }
 
     pub async fn seek_async(&mut self, position: u64) -> crate::error::Result<()> {
-        if let Err(e) = self.file.seek(SeekFrom::Start(position)).await {
+        if let Err(_e) = self.file.seek(SeekFrom::Start(position)).await {
             return Err(DownloadError::FileSeek);
         }
 
@@ -44,7 +43,7 @@ impl Stream {
     }
 
     pub async fn write_async(&mut self, buffer: &Vec<u8>) -> crate::error::Result<()> {
-        if let Err(e) = self.file.write_all(buffer).await {
+        if let Err(_e) = self.file.write_all(buffer).await {
             return Err(DownloadError::FileWrite);
         }
 
@@ -52,7 +51,7 @@ impl Stream {
     }
 
     pub async fn flush_async(&mut self) -> crate::error::Result<()> {
-        if let Err(e) = self.file.flush().await {
+        if let Err(_e) = self.file.flush().await {
             return Err(DownloadError::FileFlush);
         }
 

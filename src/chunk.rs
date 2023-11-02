@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::ops::{DerefMut};
 use std::sync::{Arc};
 use tokio::sync::Mutex;

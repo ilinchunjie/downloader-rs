@@ -1,14 +1,12 @@
 use std::collections::{VecDeque};
-use std::ops::{Deref, DerefMut};
 use std::sync::{Arc};
-use std::sync::atomic::AtomicU16;
 use std::thread;
 use std::thread::JoinHandle;
 use tokio::runtime;
 use tokio::sync::Mutex;
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_operation::DownloadOperation;
-use crate::downloader::{Downloader, DownloaderStatus};
+use crate::downloader::{Downloader};
 
 
 type DownloaderQueue = VecDeque<Arc<Mutex<Downloader>>>;
@@ -54,7 +52,7 @@ impl DownloadService {
                             if !downloader.lock().await.is_pending_async().await {
                                 continue;
                             }
-                            &mut downloadings.push(downloader_clone);
+                            let _ = &mut downloadings.push(downloader_clone);
                             downloading_count += 1;
                             downloader.lock().await.start_download();
                         }

@@ -1,11 +1,9 @@
-use std::error::Error;
 use std::ops::Deref;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use crate::download_configuration::DownloadConfiguration;
-use crate::download_handle::{DownloadHandle, DownloadHandleTrait};
-use crate::error::DownloadError;
+use crate::download_handle::{DownloadHandleTrait};
 use crate::stream::Stream;
 
 pub struct DownloadHandleFile {
@@ -45,7 +43,7 @@ impl DownloadHandleTrait for DownloadHandleFile {
         let mut stream = Stream::new(path, append).await?;
         if config.set_file_length && config.total_length > 0 {
             let total_length = config.total_length;
-            &stream.set_length(total_length).await?;
+            let _ = &stream.set_length(total_length).await?;
         }
         self.stream = Some(stream);
         Ok(())

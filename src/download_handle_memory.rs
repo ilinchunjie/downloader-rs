@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -42,8 +41,8 @@ impl DownloadHandleMemory {
                 Ok(_) => {
                     return Some(buffer);
                 }
-                Err(e) => {
-                    println!("{}", e);
+                Err(_e) => {
+                    println!("{}", _e);
                 }
             }
         }
@@ -63,10 +62,10 @@ impl DownloadHandleTrait for DownloadHandleMemory {
     async fn received_bytes_async(&mut self, poition: u64, buffer: &Vec<u8>) -> crate::error::Result<()> {
         self.downloaded_size += buffer.len() as u64;
         if let Some(cursor) = &mut self.cursor {
-            if let Err(e) = cursor.seek(SeekFrom::Start(poition)) {
+            if let Err(_) = cursor.seek(SeekFrom::Start(poition)) {
                 return Err(DownloadError::MemorySeek);
             }
-            if let Err(e) = cursor.write_all(buffer) {
+            if let Err(_) = cursor.write_all(buffer) {
                 return Err(DownloadError::MemoryWrite);
             }
         }
