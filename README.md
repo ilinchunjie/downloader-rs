@@ -22,5 +22,6 @@ a simple file downloader for rust
 - [ ] bandwidth limit
 - [x] thread count limit
 - [ ] retry times after failure
+- [ ] md5/xxHash file verification
 
 # Welcome to submit pull requests.
