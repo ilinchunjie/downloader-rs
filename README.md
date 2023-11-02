@@ -15,7 +15,7 @@
 
 <div>
   <h4>
-    <a href="https://github.com/ilinchunjie/downloader-rs/blob/main/examples"> Examples </a>
+    <a href="https://github.com/ilinchunjie/downloader-rs/blob/main/download-examples"> Examples </a>
   </h4>
 </div>
 
