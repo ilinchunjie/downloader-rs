@@ -25,10 +25,11 @@ a simple file downloader for rust
 # Support Features
 - [x] multithreading/chunk/resumable download
 - [x] download in memory
-- [ ] bandwidth limit
 - [x] thread count limit
-- [ ] retry times after failure
 - [x] md5/xxHash file verification
+- [ ] bandwidth limit
+- [ ] retry times after failure
+- [ ] incremental updates by using the fast CDC algorithm.
 
 # Welcome to submit pull requests.
 
