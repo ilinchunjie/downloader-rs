@@ -1,8 +1,10 @@
 use std::ops::Deref;
-use std::sync::Arc;
+use std::sync::{Arc};
+use tokio::sync::Mutex;
 use chrono::DateTime;
-use reqwest::Error;
+use reqwest::{Client, Error};
 use reqwest::header::{HeaderMap};
+use crate::downloader::DownloadOptions;
 
 pub struct RemoteFileInfo {
     pub total_length: u64,
@@ -52,9 +54,8 @@ impl RemoteFile {
         }
     }
 
-    pub async fn head(&mut self) -> Result<RemoteFileInfo, Error> {
-        let client = reqwest::Client::new();
-        let request = client.head(self.url.deref());
+    pub async fn head(&mut self, client: &Arc<Mutex<Client>>) -> Result<RemoteFileInfo, Error> {
+        let request = client.lock().await.head(self.url.deref());
         match request.send().await {
             Ok(response) => {
                 let headers = response.headers();

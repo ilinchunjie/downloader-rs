@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter};
 use std::ops::{DerefMut};
 use std::sync::{Arc};
+use reqwest::Client;
 use tokio::spawn;
 use tokio::sync::Mutex;
 use crate::chunk::ChunkRange;
@@ -74,6 +75,7 @@ impl From<u8> for DownloaderStatus {
 }
 
 pub struct DownloadOptions {
+    pub client: Arc<Mutex<Client>>,
     pub cancel: bool,
 }
 
@@ -86,7 +88,7 @@ pub struct Downloader {
 }
 
 impl Downloader {
-    pub fn new(config: DownloadConfiguration) -> Downloader {
+    pub fn new(config: DownloadConfiguration, client: Arc<Mutex<Client>>) -> Downloader {
         let download_in_memory = config.download_in_memory;
         let config = Arc::new(Mutex::new(config));
         let download_handle: DownloadHandle;
@@ -102,6 +104,7 @@ impl Downloader {
             download_status: Arc::new(Mutex::new(DownloaderStatus::None)),
             options: Arc::new(Mutex::new(DownloadOptions {
                 cancel: false,
+                client
             })),
         };
         downloader
@@ -215,7 +218,7 @@ async fn async_start_download(
 
     let mut remote_file = RemoteFile::new(config.lock().await.url.as_ref().unwrap().clone());
     let remote_file_info: Option<RemoteFileInfo>;
-    match remote_file.head().await {
+    match remote_file.head(&options.lock().await.client.clone()).await {
         Ok(value) => {
             remote_file_info = Some(value);
         }

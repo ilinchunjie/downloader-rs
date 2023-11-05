@@ -2,6 +2,7 @@ use std::collections::{VecDeque};
 use std::sync::{Arc};
 use std::thread;
 use std::thread::JoinHandle;
+use reqwest::Client;
 use tokio::runtime;
 use tokio::sync::Mutex;
 use crate::download_configuration::DownloadConfiguration;
@@ -17,6 +18,7 @@ pub struct DownloadService {
     parallel_count: Arc<Mutex<u16>>,
     download_queue: Arc<Mutex<DownloaderQueue>>,
     thread_handle: Option<JoinHandle<()>>,
+    client: Arc<Mutex<Client>>,
 }
 
 impl DownloadService {
@@ -27,6 +29,7 @@ impl DownloadService {
             parallel_count: Arc::new(Mutex::new(32)),
             thread_handle: None,
             cancel: Arc::new(Mutex::new(false)),
+            client: Arc::new(Mutex::new(Client::new())),
         }
     }
 
@@ -80,7 +83,7 @@ impl DownloadService {
     }
 
     pub fn add_downloader(&mut self, config: DownloadConfiguration) -> DownloadOperation {
-        let mut downloader = Downloader::new(config);
+        let mut downloader = Downloader::new(config, self.client.clone());
         downloader.pending();
         let downloader = Arc::new(Mutex::new(downloader));
         self.download_queue.blocking_lock().push_front(downloader.clone());
@@ -90,5 +93,33 @@ impl DownloadService {
 
     pub fn stop(&mut self) {
         *self.cancel.blocking_lock() = true;
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::download_configuration::DownloadConfiguration;
+    use crate::download_service::DownloadService;
+
+    #[test]
+    pub fn test_download_service() {
+        let mut service = DownloadService::new();
+        service.start_service();
+        let url = "https://gh.con.sh/https://github.com/AaronFeng753/Waifu2x-Extension-GUI/releases/download/v2.21.12/Waifu2x-Extension-GUI-v2.21.12-Portable.7z".to_string();
+        let config = DownloadConfiguration::new()
+            .set_url(url)
+            .set_file_path("temp/temp.7z".to_string())
+            .set_chunk_download(true)
+            .set_chunk_size(1024 * 1024 * 20)
+            .create_dir()
+            .build();
+        let operation = service.add_downloader(config);
+
+        while !operation.is_done() {
+            println!("{}", operation.downloaded_size());
+        }
+
+        service.stop();
+
     }
 }

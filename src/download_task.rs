@@ -40,7 +40,7 @@ impl DownloadTask {
             }
         }
 
-        let request = reqwest::Client::new()
+        let request = options.lock().await.client.lock().await
             .get(self.config.url.deref())
             .header(RANGE, range_str);
 
