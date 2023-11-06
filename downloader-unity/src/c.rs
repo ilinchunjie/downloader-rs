@@ -39,6 +39,7 @@ pub extern "C" fn add_downloader(ptr: *mut DownloadService, config: DownloadConf
         .set_file_path(path)
         .set_chunk_download(config.chunk_download)
         .set_chunk_size(config.chunk_siez)
+        .create_dir(true)
         .build();
     let operation = download_service.add_downloader(config);
     Box::into_raw(Box::new(operation))

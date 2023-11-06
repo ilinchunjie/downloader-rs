@@ -1,7 +1,9 @@
 use std::fmt::{Display, Formatter};
 use std::ops::{DerefMut};
+use std::path::Path;
 use std::sync::{Arc};
 use reqwest::Client;
+use tokio::fs;
 use tokio::spawn;
 use tokio::sync::Mutex;
 use crate::chunk::ChunkRange;
@@ -245,6 +247,18 @@ async fn async_start_download(
 
     if options.lock().await.cancel {
         return;
+    }
+
+    {
+        let mut config = config.lock().await;
+        if config.create_dir {
+            let path = Path::new(config.path.as_ref().unwrap().as_str());
+            if let Some(directory) = path.parent() {
+                if !directory.exists() {
+                    fs::create_dir_all(directory).await;
+                }
+            }
+        }
     }
 
     {

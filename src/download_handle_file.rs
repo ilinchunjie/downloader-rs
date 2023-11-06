@@ -40,6 +40,7 @@ impl DownloadHandleTrait for DownloadHandleFile {
             path = PathBuf::from(config.path.as_ref().unwrap().deref());
         }
         let append = !config.chunk_download && config.support_range_download || config.total_length == 0;
+        let create_dir = config.create_dir;
         let mut stream = Stream::new(path, append).await?;
         if config.set_file_length && config.total_length > 0 {
             let total_length = config.total_length;

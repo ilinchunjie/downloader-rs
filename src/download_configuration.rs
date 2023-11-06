@@ -16,6 +16,7 @@ pub struct DownloadConfiguration {
     pub set_file_length: bool,
     pub chunk_download: bool,
     pub create_temp_file: bool,
+    pub create_dir: bool,
     pub file_verify: FileVerify,
 }
 
@@ -75,16 +76,8 @@ impl DownloadConfigurationBuilder {
         self
     }
 
-    pub fn create_dir(self) -> DownloadConfigurationBuilder {
-        let path = Path::new(self.config.path.as_ref().unwrap().deref());
-        if let Some(directory) = path.parent() {
-            if !directory.exists() {
-                let result = fs::create_dir_all(directory);
-                if let Err(_e) = result {
-                    panic!("{}", _e);
-                }
-            }
-        }
+    pub fn create_dir(mut self, create_dir: bool) -> DownloadConfigurationBuilder {
+        self.config.create_dir = create_dir;
         self
     }
 
@@ -124,6 +117,7 @@ impl DownloadConfiguration {
             set_file_length: false,
             retry_times_on_failure: 0,
             create_temp_file: true,
+            create_dir: true
         };
         DownloadConfigurationBuilder::new(config)
     }

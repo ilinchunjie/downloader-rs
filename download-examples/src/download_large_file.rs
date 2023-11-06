@@ -9,7 +9,7 @@ pub fn start_download(service: &mut DownloadService) -> DownloadOperation {
         .set_file_path("temp/temp.7z".to_string())
         .set_chunk_download(true)
         .set_chunk_size(1024 * 1024 * 20)
-        .create_dir()
+        .create_dir(true)
         .build();
     let operation = service.add_downloader(config);
     return operation;
