@@ -51,13 +51,35 @@ pub extern "C" fn get_download_status(ptr: *mut DownloadOperation) -> u8 {
 }
 
 #[no_mangle]
+pub extern "C" fn get_download_is_done(ptr: *mut DownloadOperation) -> bool {
+    let operation = unsafe { ptr.as_mut().expect("invalid ptr: ") };
+    operation.is_done()
+}
+
+#[no_mangle]
 pub extern "C" fn get_downloaded_size(ptr: *mut DownloadOperation) -> u64 {
     let operation = unsafe { ptr.as_mut().expect("invalid ptr: ") };
     operation.downloaded_size()
 }
 
 #[no_mangle]
+pub extern "C" fn get_download_progress(ptr: *mut DownloadOperation) -> f64 {
+    let operation = unsafe { ptr.as_mut().expect("invalid ptr: ") };
+    operation.progress()
+}
+
+#[no_mangle]
 pub extern "C" fn stop_downloader(ptr: *mut DownloadOperation) {
     let operation = unsafe { ptr.as_mut().expect("invalid ptr: ") };
-    operation.stop();
+    operation.stop()
+}
+
+#[no_mangle]
+pub extern "C" fn downloader_dispose(ptr: *mut DownloadOperation) {
+    if ptr.is_null() {
+        return;
+    }
+    unsafe {
+        Box::from_raw(ptr);
+    }
 }
