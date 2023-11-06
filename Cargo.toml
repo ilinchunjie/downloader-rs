@@ -17,7 +17,7 @@ xxhash-rust = ["dep:xxhash-rust"]
 md5 = ["dep:md5"]
 
 [dependencies]
-tokio = { version = "1.32.0", features = ["full"] }
+tokio = { version = "1.32.0", features = ["bytes", "rt-multi-thread"] }
 reqwest = { version = "0.11.20", features = ["stream"] }
 bytes = { version = "1.5.0" }
 futures = { version = "0.3.28" }
