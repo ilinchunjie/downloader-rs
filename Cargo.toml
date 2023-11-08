@@ -19,7 +19,6 @@ md5 = ["dep:md5"]
 [dependencies]
 tokio = { version = "1.32.0", features = ["bytes", "rt-multi-thread"] }
 reqwest = { version = "0.11.20", features = ["stream"] }
-bytes = { version = "1.5.0" }
 futures = { version = "0.3.29", features = ["async-await"] }
 chrono = { version = "0.4.31" }
 async-trait = { version = "0.1.74" }

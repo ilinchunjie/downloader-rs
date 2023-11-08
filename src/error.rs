@@ -1,13 +1,13 @@
 use std::fmt::{Display, Formatter};
+use tokio::task::JoinError;
 
 pub enum DownloadError {
-    FileSetLength(String),
     FileOpen,
     FileSeek,
     FileWrite,
     FileFlush,
-    FileRename,
-    RemoveMetaFile,
+    FileRename(String),
+    DeleteFile,
     MemorySeek,
     MemoryWrite,
     MemoryFlush,
@@ -16,8 +16,8 @@ pub enum DownloadError {
     Response,
     ResponseChunk,
     OpenOrCreateFile,
-    CreateMetaFile(String),
-    FileVerify
+    FileVerify,
+    DownloadTask,
 }
 
 pub type Result<T> = core::result::Result<T, DownloadError>;
@@ -25,28 +25,25 @@ pub type Result<T> = core::result::Result<T, DownloadError>;
 impl Display for DownloadError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            DownloadError::FileSetLength(message) => {
-                write!(f, "{}", message)
+            DownloadError::FileOpen => { write!(f, "FileOpen") }
+            DownloadError::FileSeek => { write!(f, "FileSeek") }
+            DownloadError::FileWrite => { write!(f, "FileWrite") }
+            DownloadError::FileFlush => { write!(f, "FileFlush") }
+            DownloadError::FileRename(message) => {
+                write!(f, "FileRename {}", message)
             }
-            DownloadError::FileOpen => { write!(f, "") }
-            DownloadError::FileSeek => { write!(f, "") }
-            DownloadError::FileWrite => { write!(f, "") }
-            DownloadError::FileFlush => { write!(f, "") }
-            DownloadError::FileRename => { write!(f, "") }
-            DownloadError::RemoveMetaFile => { write!(f, "") }
-            DownloadError::MemorySeek => { write!(f, "") }
-            DownloadError::MemoryWrite => { write!(f, "") }
-            DownloadError::MemoryFlush => { write!(f, "") }
-            DownloadError::Head => { write!(f, "") }
-            DownloadError::Request => { write!(f, "") }
-            DownloadError::Response => { write!(f, "") }
-            DownloadError::ResponseChunk => { write!(f, "") }
-            DownloadError::OpenOrCreateFile => { write!(f, "") }
-            DownloadError::CreateMetaFile(message) => {
-                write!(f, "{}", message)
-            }
+            DownloadError::DeleteFile => { write!(f, "DeleteFile") }
+            DownloadError::MemorySeek => { write!(f, "MemorySeek") }
+            DownloadError::MemoryWrite => { write!(f, "MemoryWrite") }
+            DownloadError::MemoryFlush => { write!(f, "MemoryFlush") }
+            DownloadError::Head => { write!(f, "Head") }
+            DownloadError::Request => { write!(f, "Request") }
+            DownloadError::Response => { write!(f, "Response") }
+            DownloadError::ResponseChunk => { write!(f, "ResponseChunk") }
+            DownloadError::OpenOrCreateFile => { write!(f, "OpenOrCreateFile") }
+            DownloadError::DownloadTask => { write!(f, "DownloadTask") }
             DownloadError::FileVerify => {
-                write!(f, "")
+                write!(f, "FileVerify")
             }
         }
     }

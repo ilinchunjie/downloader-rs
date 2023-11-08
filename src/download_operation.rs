@@ -15,16 +15,13 @@ impl DownloadOperation {
         }
     }
 
-    pub fn text(&self) -> String {
-        return self.downloader.blocking_lock().text();
-    }
-
     pub fn status(&self) -> u8 {
         return self.downloader.blocking_lock().status();
     }
 
     pub fn downloaded_size(&self) -> u64 {
-        return self.downloader.blocking_lock().get_downloaded_size();
+        let size = self.downloader.blocking_lock().get_downloaded_size();
+        return size;
     }
 
     pub fn total_size(&self) -> u64 {
@@ -61,7 +58,8 @@ impl DownloadOperation {
     }
 
     pub fn is_done(&self) -> bool {
-        return self.downloader.blocking_lock().is_done();
+        let is_done = self.downloader.blocking_lock().is_done();
+        return is_done;
     }
 
     pub fn stop(&self) {

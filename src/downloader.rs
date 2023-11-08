@@ -1,5 +1,5 @@
 use std::fmt::{Display, Formatter};
-use std::ops::{DerefMut};
+use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use std::sync::{Arc};
 use reqwest::Client;
@@ -10,9 +10,6 @@ use tokio::task::JoinHandle;
 use crate::chunk::ChunkRange;
 use crate::chunk_hub::ChunkHub;
 use crate::download_configuration::DownloadConfiguration;
-use crate::download_handle::{DownloadHandle, DownloadHandleTrait};
-use crate::download_handle_file::DownloadHandleFile;
-use crate::download_handle_memory::DownloadHandleMemory;
 use crate::remote_file;
 use crate::remote_file::{RemoteFile};
 
@@ -87,25 +84,16 @@ pub struct Downloader {
     config: Arc<Mutex<DownloadConfiguration>>,
     download_status: Arc<Mutex<DownloaderStatus>>,
     chunk_hub: Arc<Mutex<ChunkHub>>,
-    download_handle: Arc<Mutex<DownloadHandle>>,
     options: Arc<Mutex<DownloadOptions>>,
     thread_handle: Option<JoinHandle<()>>,
 }
 
 impl Downloader {
     pub fn new(config: DownloadConfiguration, client: Arc<Mutex<Client>>) -> Downloader {
-        let download_in_memory = config.download_in_memory;
         let config = Arc::new(Mutex::new(config));
-        let download_handle: DownloadHandle;
-        if download_in_memory {
-            download_handle = DownloadHandle::Memory(DownloadHandleMemory::new(config.clone()))
-        } else {
-            download_handle = DownloadHandle::File(DownloadHandleFile::new(config.clone()))
-        }
         let downloader = Downloader {
             config: config.clone(),
             chunk_hub: Arc::new(Mutex::new(ChunkHub::new(config.clone()))),
-            download_handle: Arc::new(Mutex::new(download_handle)),
             download_status: Arc::new(Mutex::new(DownloaderStatus::None)),
             options: Arc::new(Mutex::new(DownloadOptions {
                 cancel: false,
@@ -121,8 +109,7 @@ impl Downloader {
             self.config.clone(),
             self.chunk_hub.clone(),
             self.options.clone(),
-            self.download_status.clone(),
-            self.download_handle.clone()));
+            self.download_status.clone()));
         self.thread_handle = Some(handle);
     }
 
@@ -133,25 +120,8 @@ impl Downloader {
     }
 
     pub fn get_downloaded_size(&self) -> u64 {
-        return match self.download_handle.blocking_lock().deref_mut() {
-            DownloadHandle::File(download_handle) => {
-                download_handle.get_downloaded_size()
-            }
-            DownloadHandle::Memory(download_handle) => {
-                download_handle.get_downloaded_size()
-            }
-        };
-    }
-
-    pub fn text(&self) -> String {
-        return match self.download_handle.blocking_lock().deref_mut() {
-            DownloadHandle::File(_) => {
-                String::new()
-            }
-            DownloadHandle::Memory(download_handle) => {
-                download_handle.text()
-            }
-        };
+        let size = self.chunk_hub.blocking_lock().get_downloaded_size();
+        return size;
     }
 
     pub fn get_total_size(&self) -> u64 {
@@ -218,8 +188,7 @@ async fn async_start_download(
     config: Arc<Mutex<DownloadConfiguration>>,
     chunk_hub: Arc<Mutex<ChunkHub>>,
     options: Arc<Mutex<DownloadOptions>>,
-    status: Arc<Mutex<DownloaderStatus>>,
-    download_handle: Arc<Mutex<DownloadHandle>>) {
+    status: Arc<Mutex<DownloaderStatus>>) {
     if options.lock().await.cancel {
         return;
     }
@@ -261,7 +230,7 @@ async fn async_start_download(
     {
         let mut config = config.lock().await;
         if config.create_dir {
-            let path = Path::new(config.path.as_ref().unwrap().as_str());
+            let path = Path::new(config.get_file_path());
             if let Some(directory) = path.parent() {
                 if !directory.exists() {
                     fs::create_dir_all(directory).await;
@@ -271,7 +240,8 @@ async fn async_start_download(
     }
 
     {
-        chunk_hub.lock().await.validate(download_handle.clone()).await;
+        chunk_hub.lock().await.validate().await;
+        chunk_hub.lock().await.save_local_version().await;
         let handles = chunk_hub.lock().await.start_download(options.clone());
         for handle in handles {
             match handle.await {
@@ -291,15 +261,6 @@ async fn async_start_download(
     }
 
     {
-        *status.lock().await = DownloaderStatus::FileVerify;
-        if let Err(_) = chunk_hub.lock().await.calculate_file_hash().await {
-            println!("File verification failed");
-            *status.lock().await = DownloaderStatus::Failed;
-            return;
-        }
-    }
-
-    {
         *status.lock().await = DownloaderStatus::DownloadPost;
         if let Err(e) = chunk_hub.lock().await.on_download_post().await {
             println!("error: {}", e);
@@ -308,6 +269,14 @@ async fn async_start_download(
         }
     }
 
+    {
+        *status.lock().await = DownloaderStatus::FileVerify;
+        if let Err(_) = chunk_hub.lock().await.calculate_file_hash().await {
+            println!("File verification failed");
+            *status.lock().await = DownloaderStatus::Failed;
+            return;
+        }
+    }
 
     if options.lock().await.cancel {
         return;

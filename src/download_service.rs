@@ -116,7 +116,7 @@ mod test {
         let config = DownloadConfiguration::new()
             .set_url(url)
             .set_file_path("temp/temp.7z".to_string())
-            .set_chunk_download(true)
+            .set_chunk_download(false)
             .set_chunk_size(1024 * 1024 * 20)
             .create_dir(true)
             .build();

@@ -62,14 +62,14 @@ impl DownloadTask {
                             }
                             match chunk {
                                 Ok(bytes) => {
-                                    let buffer = bytes.to_vec() as Vec<u8>;
-                                    download_chunk.lock().await.received_bytes_async(&buffer).await?;
+                                    download_chunk.lock().await.received_bytes_async(&bytes).await?;
                                 }
                                 Err(_e) => {
                                     return Err(DownloadError::ResponseChunk);
                                 }
                             }
                         }
+                        download_chunk.lock().await.flush_async().await?;
                     }
                     Err(_e) => {
                         return Err(DownloadError::Response);

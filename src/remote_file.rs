@@ -1,10 +1,8 @@
-use std::ops::Deref;
 use std::sync::{Arc};
 use tokio::sync::Mutex;
 use chrono::DateTime;
-use reqwest::{Client, Error};
+use reqwest::{Client};
 use reqwest::header::{HeaderMap};
-use crate::downloader::DownloadOptions;
 use crate::error::DownloadError;
 
 pub struct RemoteFile {

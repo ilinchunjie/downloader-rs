@@ -4,7 +4,6 @@ use xxhash_rust::xxh64;
 use md5::Context;
 
 use tokio::io::{AsyncReadExt, BufReader};
-use tokio::fs::File;
 use crate::error::DownloadError;
 
 #[derive(PartialEq)]
@@ -19,7 +18,7 @@ pub enum FileVerify {
 
 #[cfg(feature = "xxhash-rust")]
 pub async fn calculate_file_xxhash(file_path: &str, seed: u64) -> crate::error::Result<u64> {
-    match File::open(file_path).await {
+    match tokio::fs::File::open(file_path).await {
         Ok(file) => {
             let mut reader = BufReader::new(file);
             let mut hasher = xxh64::Xxh64::new(seed);
@@ -44,7 +43,7 @@ pub async fn calculate_file_xxhash(file_path: &str, seed: u64) -> crate::error::
 
 #[cfg(feature = "md5")]
 pub async fn calculate_file_md5(file_path: &str) -> crate::error::Result<String> {
-    match File::open(file_path).await {
+    match tokio::fs::File::open(file_path).await {
         Ok(file) => {
             let mut reader = BufReader::new(file);
             let mut context = Context::new();
