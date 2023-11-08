@@ -91,6 +91,13 @@ impl DownloadService {
         return operation;
     }
 
+    pub fn is_finished (&self) -> bool {
+        if let Some(handle) = &self.thread_handle {
+            return handle.is_finished();
+        }
+        return false;
+    }
+
     pub fn stop(&mut self) {
         *self.cancel.blocking_lock() = true;
     }

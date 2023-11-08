@@ -5,14 +5,15 @@ use chrono::DateTime;
 use reqwest::{Client, Error};
 use reqwest::header::{HeaderMap};
 use crate::downloader::DownloadOptions;
+use crate::error::DownloadError;
 
-pub struct RemoteFileInfo {
+pub struct RemoteFile {
     pub total_length: u64,
     pub support_range_download: bool,
     pub last_modified_time: i64,
 }
 
-impl RemoteFileInfo {
+impl RemoteFile {
     pub fn new(head_map: &HeaderMap) -> Self {
         let mut total_length = 0u64;
         let mut support_range_download = false;
@@ -43,27 +44,15 @@ impl RemoteFileInfo {
     }
 }
 
-pub struct RemoteFile {
-    url: Arc<String>,
-}
-
-impl RemoteFile {
-    pub fn new(url: Arc<String>) -> RemoteFile {
-        RemoteFile {
-            url,
+pub async fn head(client: &Arc<Mutex<Client>>, url: &str) -> crate::error::Result<RemoteFile> {
+    let request = client.lock().await.head(url);
+    match request.send().await {
+        Ok(response) => {
+            let headers = response.headers();
+            Ok(RemoteFile::new(headers))
         }
-    }
-
-    pub async fn head(&mut self, client: &Arc<Mutex<Client>>) -> Result<RemoteFileInfo, Error> {
-        let request = client.lock().await.head(self.url.deref());
-        match request.send().await {
-            Ok(response) => {
-                let headers = response.headers();
-                Ok(RemoteFileInfo::new(headers))
-            }
-            Err(e) => {
-                return Err(e);
-            }
+        Err(e) => {
+            return Err(DownloadError::Head);
         }
     }
 }

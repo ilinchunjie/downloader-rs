@@ -6,7 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ratatui = { version = "0.23.0", features = ["all-widgets"] }
-anyhow = { version = "1.0.75" }
-crossterm = { version = "0.27.0" }
 downloader-rs = { path = "../../downloader-rs" }
+dhat = { version = "0.3.2" }
+
+[profile.dev]
+debug = true
+
+[profile.release]
+debug = true

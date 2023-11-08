@@ -11,6 +11,7 @@ pub enum DownloadError {
     MemorySeek,
     MemoryWrite,
     MemoryFlush,
+    Head,
     Request,
     Response,
     ResponseChunk,
@@ -36,6 +37,7 @@ impl Display for DownloadError {
             DownloadError::MemorySeek => { write!(f, "") }
             DownloadError::MemoryWrite => { write!(f, "") }
             DownloadError::MemoryFlush => { write!(f, "") }
+            DownloadError::Head => { write!(f, "") }
             DownloadError::Request => { write!(f, "") }
             DownloadError::Response => { write!(f, "") }
             DownloadError::ResponseChunk => { write!(f, "") }

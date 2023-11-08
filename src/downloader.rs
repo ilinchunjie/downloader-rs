@@ -6,13 +6,15 @@ use reqwest::Client;
 use tokio::fs;
 use tokio::spawn;
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 use crate::chunk::ChunkRange;
 use crate::chunk_hub::ChunkHub;
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_handle::{DownloadHandle, DownloadHandleTrait};
 use crate::download_handle_file::DownloadHandleFile;
 use crate::download_handle_memory::DownloadHandleMemory;
-use crate::remote_file::{RemoteFile, RemoteFileInfo};
+use crate::remote_file;
+use crate::remote_file::{RemoteFile};
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum DownloaderStatus {
@@ -85,8 +87,9 @@ pub struct Downloader {
     config: Arc<Mutex<DownloadConfiguration>>,
     download_status: Arc<Mutex<DownloaderStatus>>,
     chunk_hub: Arc<Mutex<ChunkHub>>,
-    pub download_handle: Arc<Mutex<DownloadHandle>>,
+    download_handle: Arc<Mutex<DownloadHandle>>,
     options: Arc<Mutex<DownloadOptions>>,
+    thread_handle: Option<JoinHandle<()>>,
 }
 
 impl Downloader {
@@ -108,17 +111,19 @@ impl Downloader {
                 cancel: false,
                 client
             })),
+            thread_handle: None,
         };
         downloader
     }
 
     pub fn start_download(&mut self) {
-        spawn(async_start_download(
+        let handle = spawn(async_start_download(
             self.config.clone(),
             self.chunk_hub.clone(),
             self.options.clone(),
             self.download_status.clone(),
             self.download_handle.clone()));
+        self.thread_handle = Some(handle);
     }
 
     pub fn status(&self) -> u8 {
@@ -154,6 +159,11 @@ impl Downloader {
     }
 
     pub fn is_done(&self) -> bool {
+        if let Some(handle) = &self.thread_handle {
+            if !handle.is_finished() {
+                return false;
+            }
+        }
         return *self.download_status.blocking_lock() == DownloaderStatus::Complete
             || *self.download_status.blocking_lock() == DownloaderStatus::Failed
             || *self.download_status.blocking_lock() == DownloaderStatus::Stop;
@@ -218,9 +228,8 @@ async fn async_start_download(
         *status.lock().await = DownloaderStatus::Head;
     }
 
-    let mut remote_file = RemoteFile::new(config.lock().await.url.as_ref().unwrap().clone());
-    let remote_file_info: Option<RemoteFileInfo>;
-    match remote_file.head(&options.lock().await.client.clone()).await {
+    let remote_file_info: Option<RemoteFile>;
+    match remote_file::head(&options.lock().await.client, config.lock().await.url.as_ref().unwrap().as_str()).await {
         Ok(value) => {
             remote_file_info = Some(value);
         }
