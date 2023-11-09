@@ -1,30 +1,35 @@
+use std::ops::Deref;
 use std::sync::{Arc};
 use tokio::sync::Mutex;
-use crate::downloader::Downloader;
+use tokio::sync::watch::{Receiver, Sender};
+use crate::download_receiver::DownloadReceiver;
+use crate::downloader::{Downloader, DownloaderStatus};
 
-#[derive(Clone)]
 pub struct DownloadOperation {
     downloader: Arc<Mutex<Downloader>>,
+    download_receiver: DownloadReceiver,
 }
 
 impl DownloadOperation {
-    pub fn new(downloader: Arc<Mutex<Downloader>>) -> DownloadOperation {
+    pub fn new(
+        downloader: Arc<Mutex<Downloader>>,
+        download_receiver: DownloadReceiver) -> DownloadOperation {
         DownloadOperation {
-            downloader
+            downloader,
+            download_receiver,
         }
     }
 
     pub fn status(&self) -> u8 {
-        return self.downloader.blocking_lock().status();
+        return *self.download_receiver.status_receiver.borrow();
     }
 
     pub fn downloaded_size(&self) -> u64 {
-        let size = self.downloader.blocking_lock().get_downloaded_size();
-        return size;
+        return *self.download_receiver.downloaded_size_receiver.borrow();
     }
 
     pub fn total_size(&self) -> u64 {
-        return self.downloader.blocking_lock().get_total_size();
+        return *self.download_receiver.download_total_size_receiver.borrow();
     }
 
     pub fn progress(&self) -> f64 {
@@ -36,17 +41,8 @@ impl DownloadOperation {
         return (downloaded_size / total_length).clamp(0f64, 1f64);
     }
 
-    pub fn chunk_count(&self) -> usize {
-        return self.downloader.blocking_lock().get_chunk_count();
-    }
-
-    pub fn chunk_progress(&self, index: usize) -> f64 {
-        return self.downloader.blocking_lock().get_chunk_download_progress(index);
-    }
-
     pub fn is_done(&self) -> bool {
-        let is_done = self.downloader.blocking_lock().is_done();
-        return is_done;
+        return *self.download_receiver.is_done_receiver.borrow();
     }
 
     pub fn stop(&self) {

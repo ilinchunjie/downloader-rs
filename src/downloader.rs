@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use crate::chunk_hub::ChunkHub;
 use crate::download_configuration::DownloadConfiguration;
+use crate::download_sender::DownloadSender;
 use crate::remote_file;
 use crate::remote_file::{RemoteFile};
 
@@ -84,11 +85,12 @@ pub struct Downloader {
     download_status: Arc<Mutex<DownloaderStatus>>,
     chunk_hub: Arc<Mutex<ChunkHub>>,
     options: Arc<Mutex<DownloadOptions>>,
+    sender: Arc<Mutex<DownloadSender>>,
     thread_handle: Option<JoinHandle<()>>,
 }
 
 impl Downloader {
-    pub fn new(config: DownloadConfiguration, client: Arc<Mutex<Client>>) -> Downloader {
+    pub fn new(config: DownloadConfiguration, client: Arc<Mutex<Client>>, sender: Arc<Mutex<DownloadSender>>) -> Downloader {
         let config = Arc::new(Mutex::new(config));
         let downloader = Downloader {
             config: config.clone(),
@@ -96,8 +98,9 @@ impl Downloader {
             download_status: Arc::new(Mutex::new(DownloaderStatus::None)),
             options: Arc::new(Mutex::new(DownloadOptions {
                 cancel: false,
-                client
+                client,
             })),
+            sender,
             thread_handle: None,
         };
         downloader
@@ -108,6 +111,7 @@ impl Downloader {
             self.config.clone(),
             self.chunk_hub.clone(),
             self.options.clone(),
+            self.sender.clone(),
             self.download_status.clone()));
         self.thread_handle = Some(handle);
     }
@@ -183,17 +187,23 @@ impl Downloader {
     }
 }
 
+async fn change_download_status(status: &Arc<Mutex<DownloaderStatus>>, sender: &Arc<Mutex<DownloadSender>>, to_status: DownloaderStatus) {
+    *status.lock().await = to_status;
+    sender.lock().await.status_sender.send(to_status.into()).unwrap();
+}
+
 async fn async_start_download(
     config: Arc<Mutex<DownloadConfiguration>>,
     chunk_hub: Arc<Mutex<ChunkHub>>,
     options: Arc<Mutex<DownloadOptions>>,
+    sender: Arc<Mutex<DownloadSender>>,
     status: Arc<Mutex<DownloaderStatus>>) {
     if options.lock().await.cancel {
         return;
     }
 
     {
-        *status.lock().await = DownloaderStatus::Head;
+        change_download_status(&status, &sender, DownloaderStatus::Head).await;
     }
 
     let remote_file_info: Option<RemoteFile>;
@@ -202,7 +212,7 @@ async fn async_start_download(
             remote_file_info = Some(value);
         }
         Err(_) => {
-            *status.lock().await = DownloaderStatus::Failed;
+            change_download_status(&status, &sender, DownloaderStatus::Failed).await;
             return;
         }
     }
@@ -212,7 +222,7 @@ async fn async_start_download(
     }
 
     {
-        *status.lock().await = DownloaderStatus::Download;
+        change_download_status(&status, &sender, DownloaderStatus::Download).await;
     }
 
     if let Some(remote_file_info) = remote_file_info {
@@ -232,7 +242,7 @@ async fn async_start_download(
             let path = Path::new(config.get_file_path());
             if let Some(directory) = path.parent() {
                 if !directory.exists() {
-                    fs::create_dir_all(directory).await;
+                    let _ = fs::create_dir_all(directory).await;
                 }
             }
         }
@@ -245,13 +255,12 @@ async fn async_start_download(
             match handle.await {
                 Ok(result) => {
                     if let Err(e) = result {
-                        println!("error: {}", e);
-                        *status.lock().await = DownloaderStatus::Failed;
+                        change_download_status(&status, &sender, DownloaderStatus::Failed).await;
                         return;
                     }
                 }
                 Err(_) => {
-                    *status.lock().await = DownloaderStatus::Failed;
+                    change_download_status(&status, &sender, DownloaderStatus::Failed).await;
                     return;
                 }
             }
@@ -259,19 +268,17 @@ async fn async_start_download(
     }
 
     {
-        *status.lock().await = DownloaderStatus::DownloadPost;
+        change_download_status(&status, &sender, DownloaderStatus::DownloadPost).await;
         if let Err(e) = chunk_hub.lock().await.on_download_post().await {
-            println!("error: {}", e);
-            *status.lock().await = DownloaderStatus::Failed;
+            change_download_status(&status, &sender, DownloaderStatus::Failed).await;
             return;
         }
     }
 
     {
-        *status.lock().await = DownloaderStatus::FileVerify;
+        change_download_status(&status, &sender, DownloaderStatus::FileVerify).await;
         if let Err(_) = chunk_hub.lock().await.calculate_file_hash().await {
-            println!("File verification failed");
-            *status.lock().await = DownloaderStatus::Failed;
+            change_download_status(&status, &sender, DownloaderStatus::Failed).await;
             return;
         }
     }
@@ -281,6 +288,6 @@ async fn async_start_download(
     }
 
     {
-        *status.lock().await = DownloaderStatus::Complete;
+        change_download_status(&status, &sender, DownloaderStatus::Complete).await;
     }
 }

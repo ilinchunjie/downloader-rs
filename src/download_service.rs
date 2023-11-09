@@ -7,6 +7,7 @@ use tokio::runtime;
 use tokio::sync::Mutex;
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_operation::DownloadOperation;
+use crate::download_tracker;
 use crate::downloader::{Downloader};
 
 
@@ -83,15 +84,16 @@ impl DownloadService {
     }
 
     pub fn add_downloader(&mut self, config: DownloadConfiguration) -> DownloadOperation {
-        let mut downloader = Downloader::new(config, self.client.clone());
+        let (tx, rx) = download_tracker::new();
+        let mut downloader = Downloader::new(config, self.client.clone(), Arc::new(Mutex::new(tx)));
         downloader.pending();
         let downloader = Arc::new(Mutex::new(downloader));
         self.download_queue.blocking_lock().push_front(downloader.clone());
-        let operation = DownloadOperation::new(downloader.clone());
+        let operation = DownloadOperation::new(downloader.clone(), rx);
         return operation;
     }
 
-    pub fn is_finished (&self) -> bool {
+    pub fn is_finished(&self) -> bool {
         if let Some(handle) = &self.thread_handle {
             return handle.is_finished();
         }
@@ -105,6 +107,9 @@ impl DownloadService {
 
 #[cfg(test)]
 mod test {
+    use std::thread;
+    use std::time::Duration;
+    use tokio::runtime;
     use crate::download_configuration::DownloadConfiguration;
     use crate::download_service::DownloadService;
 
@@ -127,6 +132,40 @@ mod test {
         }
 
         service.stop();
+    }
 
+    #[tokio::test]
+    async fn test_watch() {
+        let handle = thread::spawn(move || {
+            let rt = runtime::Builder::new_multi_thread()
+                .worker_threads(4)
+                .enable_all()
+                .build()
+                .expect("创建失败");
+
+            rt.block_on(async {
+                let (tx, mut rx) = tokio::sync::watch::channel(0u64);
+                tokio::spawn(async move {
+                    loop {
+                        println!("receive {}", *rx.borrow());
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                    }
+                });
+
+                tokio::spawn(async move {
+                    let mut value = 0u64;
+                    loop {
+                        tx.send(value);
+                        println!("send {}", value);
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        value += 1;
+                    }
+                });
+
+                loop {}
+            })
+        });
+
+        handle.join().expect("");
     }
 }
