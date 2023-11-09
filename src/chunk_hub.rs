@@ -5,7 +5,7 @@ use tokio::fs::OpenOptions;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use crate::{chunk, chunk_metadata};
+use crate::{chunk, chunk_metadata, file_verify};
 use crate::chunk::{Chunk};
 use crate::chunk_range::ChunkRange;
 use crate::chunk_operation::ChunkOperation;
