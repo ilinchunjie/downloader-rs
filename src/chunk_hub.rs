@@ -71,38 +71,28 @@ impl ChunkHub {
         let config = self.config.lock().await;
         let mut chunk_count = 1;
         if config.support_range_download && config.chunk_download {
-            chunk_count = (config.total_length as f64 / config.chunk_size as f64).ceil() as u16;
+            chunk_count = (config.total_length as f64 / config.chunk_size as f64).ceil() as usize;
             chunk_count = chunk_count.max(1);
         }
 
         let version = chunk_metadata::get_local_version(config.get_file_path()).await;
 
-        let mut chunks: Vec<Chunk> = Vec::with_capacity(chunk_count as usize);
+        let mut chunks: Vec<Chunk> = Vec::with_capacity(chunk_count);
+        let chunk_ranges = ChunkRange::from_chunk_count(config.total_length, chunk_count as u64, config.chunk_size);
 
         for i in 0..chunk_count {
-            let start_position = (i as u64 * config.chunk_size) as u64;
-            let mut end_position = start_position + config.chunk_size - 1;
-            if i == chunk_count - 1 {
-                if config.total_length == 0 {
-                    end_position = 0;
-                } else {
-                    end_position = start_position + config.total_length % config.chunk_size - 1;
-                }
-            }
             let file_path = format!("{}.chunk{}", config.get_file_path(), i);
-            println!("{}->{}", start_position, end_position);
             let mut chunk = Chunk::new(
                 file_path,
-                ChunkRange::from_start_end(start_position, end_position),
-                 config.support_range_download && config.total_length > 0,
+                chunk_ranges.get(i).unwrap().clone(),
+                 config.support_range_download,
             );
-            if version != config.remote_version {
+            if version == 0 ||version != config.remote_version {
                 chunk.delete_chunk_file().await;
             } else {
                 chunk.validate().await;
             }
-
-            let chunk_operation = Arc::new(Mutex::new(ChunkOperation::with_chunk(&chunk)));
+            let chunk_operation = Arc::new(Mutex::new(ChunkOperation::with_chunk(&chunk.chunk_range)));
             chunk.set_chunk_operation(chunk_operation.clone());
             self.chunk_operations.push(chunk_operation);
             chunks.push(chunk);

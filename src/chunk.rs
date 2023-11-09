@@ -39,10 +39,6 @@ impl Chunk {
         }
     }
 
-    pub fn from(total_length: u64, chunk_size: u64) -> Vec<Chunk> {
-
-    }
-
     pub fn get_downloaded_size(& self) -> u64 {
         return  self.chunk_range.length();
     }

@@ -1,4 +1,4 @@
-use crate::chunk::Chunk;
+use crate::chunk_range::ChunkRange;
 
 pub struct ChunkOperation {
     downloaded_size: u64,
@@ -15,10 +15,10 @@ impl Default for ChunkOperation {
 }
 
 impl ChunkOperation {
-    pub fn with_chunk(chunk: &Chunk) -> ChunkOperation {
+    pub fn with_chunk(chunk_range: &ChunkRange) -> ChunkOperation {
         ChunkOperation {
-            total_size: chunk.chunk_range.chunk_length(),
-            downloaded_size: chunk.chunk_range.length(),
+            total_size: chunk_range.chunk_length(),
+            downloaded_size: chunk_range.length(),
         }
     }
 
