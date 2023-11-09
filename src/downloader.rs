@@ -7,7 +7,6 @@ use tokio::fs;
 use tokio::spawn;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use crate::chunk::ChunkRange;
 use crate::chunk_hub::ChunkHub;
 use crate::download_configuration::DownloadConfiguration;
 use crate::remote_file;
@@ -179,8 +178,8 @@ impl Downloader {
         return self.chunk_hub.blocking_lock().get_chunk_count();
     }
 
-    pub fn get_chunk_range(&self, index: usize) -> Option<ChunkRange> {
-        return self.chunk_hub.blocking_lock().get_chunk_range(index);
+    pub fn get_chunk_download_progress(&self, index: usize) -> f64 {
+        return self.chunk_hub.blocking_lock().get_chunk_download_progress(index);
     }
 }
 
@@ -198,7 +197,7 @@ async fn async_start_download(
     }
 
     let remote_file_info: Option<RemoteFile>;
-    match remote_file::head(&options.lock().await.client, config.lock().await.url.as_ref().unwrap().as_str()).await {
+    match remote_file::head(&options.lock().await.client, config.lock().await.url()).await {
         Ok(value) => {
             remote_file_info = Some(value);
         }
@@ -240,9 +239,8 @@ async fn async_start_download(
     }
 
     {
-        chunk_hub.lock().await.validate().await;
-        chunk_hub.lock().await.save_local_version().await;
-        let handles = chunk_hub.lock().await.start_download(options.clone());
+        let chunks = chunk_hub.lock().await.validate().await;
+        let handles = chunk_hub.lock().await.start_download(options.clone(), chunks);
         for handle in handles {
             match handle.await {
                 Ok(result) => {

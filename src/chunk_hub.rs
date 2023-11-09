@@ -6,7 +6,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use crate::{chunk, chunk_metadata};
-use crate::chunk::{Chunk, ChunkRange};
+use crate::chunk::{Chunk};
+use crate::chunk_range::ChunkRange;
+use crate::chunk_operation::ChunkOperation;
 use crate::download_configuration::DownloadConfiguration;
 use crate::downloader::DownloadOptions;
 use crate::error::DownloadError;
@@ -14,8 +16,8 @@ use crate::file_verify::FileVerify;
 
 pub struct ChunkHub {
     config: Arc<Mutex<DownloadConfiguration>>,
+    chunk_operations: Vec<Arc<Mutex<ChunkOperation>>>,
     chunk_length: usize,
-    chunks: Option<Vec<Arc<Mutex<Chunk>>>>,
 }
 
 impl ChunkHub {
@@ -23,29 +25,23 @@ impl ChunkHub {
         Self {
             config,
             chunk_length: 0,
-            chunks: None,
+            chunk_operations: vec![],
         }
-    }
-
-    pub async fn save_local_version(&self) {
-        let config = self.config.lock().await;
-        chunk_metadata::save_local_version(config.get_file_path(), config.remote_version).await;
     }
 
     pub fn start_download(
         &mut self,
         options: Arc<Mutex<DownloadOptions>>,
+        chunks: Vec<Chunk>,
     ) -> Vec<JoinHandle<crate::error::Result<()>>> {
         let mut handles: Vec<JoinHandle<crate::error::Result<()>>> = vec![];
-        if let Some(chunks) = &mut self.chunks {
-            for chunk in chunks {
-                let handle = spawn(start_download_chunks(
-                    self.config.clone(),
-                    chunk.clone(),
-                    options.clone(),
-                ));
-                handles.push(handle);
-            }
+        for chunk in chunks {
+            let handle = spawn(start_download_chunks(
+                self.config.clone(),
+                chunk,
+                options.clone(),
+            ));
+            handles.push(handle);
         }
         handles
     }
@@ -54,27 +50,24 @@ impl ChunkHub {
         return self.chunk_length;
     }
 
-    pub fn get_chunk_range(&self, index: usize) -> Option<ChunkRange> {
-        if let Some(chunks) = &self.chunks {
-            if let Some(chunk) = chunks.get(index) {
-                return Some(chunk.blocking_lock().chunk_range());
-            }
+    pub fn get_chunk_download_progress(&self, index: usize) -> f64 {
+        if let Some(operation) = self.chunk_operations.get(index) {
+            let downloaded_size = operation.blocking_lock().get_downloaded_size();
+            let total_size = operation.blocking_lock().get_total_size();
+            return (downloaded_size as f64 / total_size as f64).clamp(0f64, 1f64);
         }
-        return None;
+        return 0f64;
     }
 
     pub fn get_downloaded_size(&self) -> u64 {
         let mut downloaded_size = 0u64;
-        if let Some(chunks) = &self.chunks {
-            for chunk in chunks {
-                downloaded_size += chunk.blocking_lock().get_downloaded_size();
-            }
+        for operation in &self.chunk_operations {
+            downloaded_size += operation.blocking_lock().get_downloaded_size();
         }
         return downloaded_size;
     }
 
-    pub async fn validate(&mut self) {
-        self.chunks = None;
+    pub async fn validate(&mut self) -> Vec<Chunk> {
         let config = self.config.lock().await;
         let mut chunk_count = 1;
         if config.support_range_download && config.chunk_download {
@@ -84,7 +77,7 @@ impl ChunkHub {
 
         let version = chunk_metadata::get_local_version(config.get_file_path()).await;
 
-        let mut chunks: Vec<Arc<Mutex<Chunk>>> = Vec::with_capacity(chunk_count as usize);
+        let mut chunks: Vec<Chunk> = Vec::with_capacity(chunk_count as usize);
 
         for i in 0..chunk_count {
             let start_position = (i as u64 * config.chunk_size) as u64;
@@ -97,10 +90,11 @@ impl ChunkHub {
                 }
             }
             let file_path = format!("{}.chunk{}", config.get_file_path(), i);
+            println!("{}->{}", start_position, end_position);
             let mut chunk = Chunk::new(
                 file_path,
                 ChunkRange::from_start_end(start_position, end_position),
-                config.support_range_download,
+                 config.support_range_download && config.total_length > 0,
             );
             if version != config.remote_version {
                 chunk.delete_chunk_file().await;
@@ -108,11 +102,23 @@ impl ChunkHub {
                 chunk.validate().await;
             }
 
-            let chunk = Arc::new(Mutex::new(chunk));
+            let chunk_operation = Arc::new(Mutex::new(ChunkOperation::with_chunk(&chunk)));
+            chunk.set_chunk_operation(chunk_operation.clone());
+            self.chunk_operations.push(chunk_operation);
             chunks.push(chunk);
         }
         self.chunk_length = chunk_count as usize;
-        self.chunks = Some(chunks);
+
+        drop(config);
+
+        self.save_local_version().await;
+
+        chunks
+    }
+
+    async fn save_local_version(&mut self) {
+        let config = self.config.lock().await;
+        chunk_metadata::save_local_version(config.get_file_path(), config.remote_version).await;
     }
 
     pub async fn calculate_file_hash(&self) -> crate::error::Result<()> {
@@ -188,16 +194,12 @@ impl ChunkHub {
 
 async fn start_download_chunks(
     config: Arc<Mutex<DownloadConfiguration>>,
-    chunk: Arc<Mutex<Chunk>>,
+    chunk: Chunk,
     options: Arc<Mutex<DownloadOptions>>,
 ) -> crate::error::Result<()> {
-    {
-        let chunk = chunk.lock().await;
-        if chunk.valid {
-            return Ok(());
-        }
+    if chunk.valid {
+        return Ok(());
     }
-
     let url = config.lock().await.url.as_ref().unwrap().clone();
     chunk::start_download(url, chunk, options).await?;
     Ok(())

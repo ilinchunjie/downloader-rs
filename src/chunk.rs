@@ -1,55 +1,11 @@
 use std::sync::{Arc};
 use tokio::sync::Mutex;
+use crate::chunk_operation::ChunkOperation;
 use crate::download_task::{DownloadTaskConfiguration, DownloadTask};
 use crate::downloader::DownloadOptions;
 use crate::error::DownloadError;
 use crate::stream::Stream;
-
-#[derive(Copy, Clone)]
-pub struct ChunkRange {
-    pub start: u64,
-    pub end: u64,
-    pub position: u64,
-}
-
-impl Default for ChunkRange {
-    fn default() -> Self {
-        Self {
-            start: 0,
-            end: 0,
-            position: 0,
-        }
-    }
-}
-
-impl ChunkRange {
-    pub fn from_start_end(start: u64, end: u64) -> ChunkRange {
-        ChunkRange {
-            start,
-            end,
-            position: start,
-        }
-    }
-
-    pub fn chunk_length(&self) -> u64 {
-        if self.end <= self.start {
-            return 0u64;
-        }
-        return self.end - self.start + 1;
-    }
-
-    pub fn length(&self) -> u64 {
-        return self.position - self.start;
-    }
-
-    pub fn set_position(&mut self, position: u64) {
-        self.position = position;
-    }
-
-    pub fn eof(&self) -> bool {
-        return self.position == self.end + 1;
-    }
-}
+use crate::chunk_range::ChunkRange;
 
 pub struct Chunk {
     pub file_path: String,
@@ -57,6 +13,7 @@ pub struct Chunk {
     pub chunk_range: ChunkRange,
     pub range_download: bool,
     pub valid: bool,
+    pub chunk_operation: Option<Arc<Mutex<ChunkOperation>>>
 }
 
 impl Default for Chunk {
@@ -67,6 +24,7 @@ impl Default for Chunk {
             chunk_range: ChunkRange::default(),
             range_download: false,
             valid: false,
+            chunk_operation: None
         }
     }
 }
@@ -81,8 +39,16 @@ impl Chunk {
         }
     }
 
+    pub fn from(total_length: u64, chunk_size: u64) -> Vec<Chunk> {
+
+    }
+
     pub fn get_downloaded_size(& self) -> u64 {
         return  self.chunk_range.length();
+    }
+
+    pub fn set_chunk_operation(&mut self, operation: Arc<Mutex<ChunkOperation>>) {
+        self.chunk_operation = Some(operation);
     }
 
     pub async fn setup(&mut self) -> crate::error::Result<()> {
@@ -95,6 +61,9 @@ impl Chunk {
         if let Some(stream) = &mut self.stream {
             stream.write_async(buffer).await?;
             self.chunk_range.position += buffer.len() as u64;
+            if let Some(operation) = &self.chunk_operation {
+                operation.lock().await.set_downloaded_size(self.chunk_range.length());
+            }
         }
         Ok(())
     }
@@ -142,19 +111,15 @@ impl Chunk {
 
 pub async fn start_download(
     url: Arc<String>,
-    chunk: Arc<Mutex<Chunk>>,
+    chunk: Chunk,
     options: Arc<Mutex<DownloadOptions>>,
 ) -> crate::error::Result<()> {
-    let config: DownloadTaskConfiguration;
-    {
-        let chunk = chunk.lock().await;
-        config = DownloadTaskConfiguration {
-            range_download: chunk.range_download,
-            range_start: chunk.chunk_range.position,
-            range_end: chunk.chunk_range.end,
-            url,
-        };
-    }
+    let config = DownloadTaskConfiguration {
+        range_download: chunk.range_download,
+        range_start: chunk.chunk_range.position,
+        range_end: chunk.chunk_range.end,
+        url,
+    };
 
     let mut task = DownloadTask::new(config);
     task.start_download(options, chunk).await

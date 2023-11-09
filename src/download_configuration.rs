@@ -100,4 +100,6 @@ impl DownloadConfiguration {
     pub fn get_file_path(&self) -> &str {
         return self.path.as_ref().unwrap().as_str();
     }
+
+    pub fn url(&self) -> &str { return self.url.as_ref().unwrap().as_str(); }
 }
