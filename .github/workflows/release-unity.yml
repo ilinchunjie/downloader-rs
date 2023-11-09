@@ -181,7 +181,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.73.0
-          target: aarch64-apple-ios, x86_64-apple-ios
+          target: aarch64-apple-ios
 
       - name: install cross
         shell: bash
@@ -192,28 +192,20 @@ jobs:
         run: |
           cd downloader-unity
           cross build --release --target aarch64-apple-ios
-          cross build --release --target x86_64-apple-ios
 
       - name: strip library
         run: |
           cd downloader-unity
           strip target/aarch64-apple-ios/release/libdownloader.a
-          strip target/x86_64-apple-ios/release/libdownloader.a
-
-      - name: build universal library
-        run: |
-          cd downloader-unity
-          mkdir -p "target/universal/release"
-          lipo -create -output target/universal/release/libdownloader.a target/aarch64-apple-ios/release/libdownloader.a target/x86_64-apple-ios/release/libdownloader.a
 
       - name: build archive
         shell: bash
         run: |
           cd downloader-unity
-          staging="downloader-universal-apple-ios"
+          staging="downloader-aarch64-apple-ios"
           mkdir -p "$staging"
           
-          cp "target/universal/release/libdownloader.a" "$staging"
+          cp "target/aarch64-apple-ios/release/libdownloader.a" "$staging"
           tar czf "$staging.tar.gz" "$staging"
           echo "ASSET=$staging.tar.gz" >> $GITHUB_ENV
 
