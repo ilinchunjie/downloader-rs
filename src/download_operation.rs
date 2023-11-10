@@ -25,9 +25,6 @@ impl DownloadOperation {
     }
 
     pub fn downloaded_size(&self) -> u64 {
-        if self.status() == DownloaderStatus::Complete {
-            return self.total_size();
-        }
         return *self.download_receiver.downloaded_size_receiver.borrow();
     }
 

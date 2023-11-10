@@ -219,7 +219,7 @@ async fn async_start_download(
             let sender = sender.clone();
             let cancel = cancel.clone();
             spawn(async move {
-                loop {
+                'r: loop {
                     let mut downloaded_size_changed = false;
                     for receiver in &receivers {
                         if let Ok(changed) = receiver.has_changed() {
@@ -231,11 +231,18 @@ async fn async_start_download(
                     }
                     if downloaded_size_changed {
                         let downloaded_size = chunk_hub.lock().await.get_downloaded_size().await;
-                        sender.lock().await.downloaded_size_sender.send(downloaded_size).unwrap();
+                        if *cancel.lock().await {
+                            break 'r;
+                        }
+                        let sender = sender.lock().await;
+                        if *cancel.lock().await {
+                            break 'r;
+                        }
+                        let _ = sender.downloaded_size_sender.send(downloaded_size);
                     }
 
                     if *cancel.lock().await {
-                        break
+                        break 'r;
                     }
                 }
             });
@@ -260,6 +267,13 @@ async fn async_start_download(
         }
 
         *cancel.lock().await = true;
+
+        if options.lock().await.cancel {
+            return;
+        }
+
+        let downloaded_size = chunk_hub.lock().await.get_downloaded_size().await;
+        let _ = sender.lock().await.downloaded_size_sender.send(downloaded_size);
     }
 
     {
