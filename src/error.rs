@@ -14,7 +14,7 @@ pub enum DownloadError {
     MemoryFlush,
     Head,
     Request,
-    Response,
+    Response(String, u16),
     ResponseChunk,
     OpenOrCreateFile,
     FileVerify,
@@ -40,7 +40,9 @@ impl Display for DownloadError {
             DownloadError::MemoryFlush => { write!(f, "MemoryFlush") }
             DownloadError::Head => { write!(f, "Head") }
             DownloadError::Request => { write!(f, "Request") }
-            DownloadError::Response => { write!(f, "Response") }
+            DownloadError::Response(url, status_code) => {
+                write!(f, "{} 请求失败 {}", url, status_code)
+            }
             DownloadError::ResponseChunk => { write!(f, "ResponseChunk") }
             DownloadError::OpenOrCreateFile => { write!(f, "OpenOrCreateFile") }
             DownloadError::DownloadTask => { write!(f, "DownloadTask") }

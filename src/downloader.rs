@@ -80,7 +80,7 @@ pub struct DownloadOptions {
 }
 
 pub struct Downloader {
-    config: Arc<Mutex<DownloadConfiguration>>,
+    config: Arc<DownloadConfiguration>,
     download_status: Arc<Mutex<DownloaderStatus>>,
     chunk_hub: Arc<Mutex<ChunkHub>>,
     options: Arc<Mutex<DownloadOptions>>,
@@ -90,7 +90,7 @@ pub struct Downloader {
 
 impl Downloader {
     pub fn new(config: DownloadConfiguration, client: Arc<Mutex<Client>>, sender: Arc<Mutex<DownloadSender>>) -> Downloader {
-        let config = Arc::new(Mutex::new(config));
+        let config = Arc::new(config);
         let downloader = Downloader {
             config: config.clone(),
             chunk_hub: Arc::new(Mutex::new(ChunkHub::new(config.clone()))),
@@ -144,7 +144,7 @@ async fn change_download_status(status: &Arc<Mutex<DownloaderStatus>>, sender: &
 }
 
 async fn async_start_download(
-    config: Arc<Mutex<DownloadConfiguration>>,
+    config: Arc<DownloadConfiguration>,
     chunk_hub: Arc<Mutex<ChunkHub>>,
     options: Arc<Mutex<DownloadOptions>>,
     sender: Arc<Mutex<DownloadSender>>,
@@ -153,12 +153,19 @@ async fn async_start_download(
         return;
     }
 
-    {
-        change_download_status(&status, &sender, DownloaderStatus::Head).await;
+    if config.create_dir {
+        let path = Path::new(config.get_file_path());
+        if let Some(directory) = path.parent() {
+            if !directory.exists() {
+                let _ = fs::create_dir_all(directory).await;
+            }
+        }
     }
 
+    change_download_status(&status, &sender, DownloaderStatus::Head).await;
+
     let remote_file: Option<RemoteFile>;
-    match remote_file::head(&options.lock().await.client, config.lock().await.url()).await {
+    match remote_file::head(&options.lock().await.client, config).await {
         Ok(value) => {
             remote_file = Some(value);
         }
@@ -173,38 +180,15 @@ async fn async_start_download(
         return;
     }
 
-    {
-        change_download_status(&status, &sender, DownloaderStatus::Download).await;
-    }
-
-    if let Some(remote_file) = &remote_file {
-        let mut config = config.lock().await;
-        config.remote_version = remote_file.last_modified_time;
-        config.support_range_download = remote_file.support_range_download;
-        config.total_length = remote_file.total_length;
-        sender.lock().await.download_total_size_sender.send(remote_file.total_length).unwrap();
-    }
-
-    drop(remote_file);
-
-    if options.lock().await.cancel {
-        return;
-    }
+    change_download_status(&status, &sender, DownloaderStatus::Download).await;
 
     {
-        let config = config.lock().await;
-        if config.create_dir {
-            let path = Path::new(config.get_file_path());
-            if let Some(directory) = path.parent() {
-                if !directory.exists() {
-                    let _ = fs::create_dir_all(directory).await;
-                }
-            }
-        }
-    }
+        let remote_file = remote_file.unwrap();
 
-    {
-        let receivers = chunk_hub.lock().await.validate().await;
+        let _ = sender.lock().await.download_total_size_sender.send(remote_file.total_length);
+
+        let receivers = chunk_hub.lock().await.validate(remote_file).await;
+
         if let Err(e) = receivers {
             sender.lock().await.error_sender.send(e).unwrap();
             change_download_status(&status, &sender, DownloaderStatus::Failed).await;

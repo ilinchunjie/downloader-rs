@@ -6,6 +6,7 @@ use crate::downloader::DownloadOptions;
 use crate::error::DownloadError;
 use crate::stream::Stream;
 use crate::chunk_range::ChunkRange;
+use crate::download_configuration::DownloadConfiguration;
 
 pub struct Chunk {
     pub file_path: String,
@@ -103,10 +104,10 @@ impl Chunk {
 }
 
 pub async fn start_download(
-    url: Arc<String>,
+    config: Arc<DownloadConfiguration>,
     chunk: Arc<Mutex<Chunk>>,
     options: Arc<Mutex<DownloadOptions>>,
 ) -> crate::error::Result<()> {
     let mut task = DownloadTask::new();
-    task.start_download(url, options, chunk).await
+    task.start_download(config, options, chunk).await
 }

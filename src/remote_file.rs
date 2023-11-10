@@ -3,6 +3,7 @@ use tokio::sync::Mutex;
 use chrono::DateTime;
 use reqwest::{Client};
 use reqwest::header::{HeaderMap};
+use crate::download_configuration::DownloadConfiguration;
 use crate::error::DownloadError;
 
 pub struct RemoteFile {
@@ -42,15 +43,35 @@ impl RemoteFile {
     }
 }
 
-pub async fn head(client: &Arc<Mutex<Client>>, url: &str) -> crate::error::Result<RemoteFile> {
-    let request = client.lock().await.head(url);
-    match request.send().await {
-        Ok(response) => {
-            let headers = response.headers();
-            Ok(RemoteFile::new(headers))
+pub async fn head(client: &Arc<Mutex<Client>>, config: Arc<DownloadConfiguration>) -> crate::error::Result<RemoteFile> {
+    let retry_count_limit = config.retry_times_on_failure;
+    let mut retry_count = 0;
+
+    'r: loop {
+        let request = client.lock().await.head(config.url());
+        let result = request.send().await;
+        if let Err(e) = result {
+            if retry_count >= retry_count_limit {
+                return Err(DownloadError::Head);
+            } else {
+                retry_count += 1;
+                continue 'r;
+            }
         }
-        Err(_e) => {
-            return Err(DownloadError::Head);
+        let response = result.unwrap();
+        if let Err(e) = response.error_for_status_ref() {
+            if retry_count >= retry_count_limit {
+                if let Some(status_code) = e.status() {
+                    return Err(DownloadError::Response(e.url().as_ref().unwrap().to_string(), status_code.into()));
+                }
+            } else {
+                retry_count += 1;
+                println!("retry {}", retry_count);
+                continue 'r;
+            }
         }
+
+        let headers = response.headers();
+        return Ok(RemoteFile::new(headers));
     }
 }

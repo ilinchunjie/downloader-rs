@@ -28,7 +28,7 @@ a simple file downloader for rust
 - [x] thread count limit
 - [x] md5/xxHash file verification
 - [ ] bandwidth limit
-- [ ] retry times after failure
+- [x] retry times after request failure
 - [ ] incremental updates by using the fast CDC algorithm.
 
 # Welcome to submit pull requests.

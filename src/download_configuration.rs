@@ -8,7 +8,7 @@ pub struct DownloadConfiguration {
     pub total_length: u64,
     pub remote_version: i64,
     pub retry_times_on_failure: u8,
-    pub support_range_download: bool,
+    pub range_download: bool,
     pub chunk_download: bool,
     pub create_dir: bool,
     pub file_verify: FileVerify,
@@ -32,6 +32,11 @@ impl DownloadConfigurationBuilder {
 
     pub fn set_file_path(mut self, path: String) -> DownloadConfigurationBuilder {
         self.config.path = Some(Arc::new(path));
+        self
+    }
+
+    pub fn set_range_download(mut self, range_download: bool) -> DownloadConfigurationBuilder {
+        self.config.range_download = range_download;
         self
     }
 
@@ -83,7 +88,7 @@ impl DownloadConfiguration {
             url: None,
             path: None,
             file_verify: FileVerify::None,
-            support_range_download: false,
+            range_download: true,
             chunk_download: false,
             chunk_size: 1024 * 1024 * 5,
             total_length: 0,
