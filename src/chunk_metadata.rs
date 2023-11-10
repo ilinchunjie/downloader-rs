@@ -5,9 +5,11 @@ use crate::error::DownloadError;
 pub async fn get_local_version(path: impl AsRef<str>) -> i64 {
     let meta_file_path = format!("{}.metadata", path.as_ref());
     if let Ok(exist) = tokio::fs::try_exists(&meta_file_path).await {
-        if let Ok(meta_file) = &mut OpenOptions::new().read(true).open(&meta_file_path).await {
-            if let Ok(version) = meta_file.read_i64_le().await {
-                return version;
+        if exist {
+            if let Ok(meta_file) = &mut OpenOptions::new().read(true).open(&meta_file_path).await {
+                if let Ok(version) = meta_file.read_i64_le().await {
+                    return version;
+                }
             }
         }
     }

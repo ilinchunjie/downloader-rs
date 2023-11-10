@@ -1,5 +1,4 @@
 use std::fmt::{Display, Formatter};
-use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use std::sync::{Arc};
 use reqwest::Client;
@@ -116,31 +115,11 @@ impl Downloader {
         self.thread_handle = Some(handle);
     }
 
-    pub fn get_total_size(&self) -> u64 {
-        self.config.blocking_lock().total_length
-    }
-
     pub fn is_done(&self) -> bool {
         if let Some(handle) = &self.thread_handle {
             return handle.is_finished();
         }
         return false;
-    }
-
-    pub fn is_stop(&self) -> bool {
-        return *self.download_status.blocking_lock() == DownloaderStatus::Stop;
-    }
-
-    pub async fn is_stop_async(&self) -> bool {
-        return *self.download_status.lock().await == DownloaderStatus::Stop;
-    }
-
-    pub fn is_error(&self) -> bool {
-        return *self.download_status.blocking_lock() == DownloaderStatus::Failed;
-    }
-
-    pub fn is_pending(&self) -> bool {
-        return *self.download_status.blocking_lock() == DownloaderStatus::Pending;
     }
 
     pub async fn is_pending_async(&self) -> bool {
@@ -149,11 +128,13 @@ impl Downloader {
 
     pub fn pending(&mut self) {
         *self.download_status.blocking_lock() = DownloaderStatus::Pending;
+        self.sender.blocking_lock().status_sender.send((DownloaderStatus::Pending).into()).unwrap();
     }
 
     pub fn stop(&mut self) {
         self.options.blocking_lock().cancel = true;
         *self.download_status.blocking_lock() = DownloaderStatus::Stop;
+        self.sender.blocking_lock().status_sender.send((DownloaderStatus::Stop).into()).unwrap();
     }
 }
 
@@ -181,8 +162,9 @@ async fn async_start_download(
         Ok(value) => {
             remote_file = Some(value);
         }
-        Err(_) => {
+        Err(e) => {
             change_download_status(&status, &sender, DownloaderStatus::Failed).await;
+            sender.lock().await.error_sender.send(e).unwrap();
             return;
         }
     }
@@ -210,7 +192,7 @@ async fn async_start_download(
     }
 
     {
-        let mut config = config.lock().await;
+        let config = config.lock().await;
         if config.create_dir {
             let path = Path::new(config.get_file_path());
             if let Some(directory) = path.parent() {
@@ -223,6 +205,12 @@ async fn async_start_download(
 
     {
         let receivers = chunk_hub.lock().await.validate().await;
+        if let Err(e) = receivers {
+            sender.lock().await.error_sender.send(e).unwrap();
+            change_download_status(&status, &sender, DownloaderStatus::Failed).await;
+            return;
+        }
+        let receivers = receivers.unwrap();
         let handles = chunk_hub.lock().await.start_download(options.clone());
         let cancel = Arc::new(Mutex::new(false));
 
@@ -235,8 +223,10 @@ async fn async_start_download(
                     let mut downloaded_size_changed = false;
                     for receiver in &receivers {
                         if let Ok(changed) = receiver.has_changed() {
-                            downloaded_size_changed = true;
-                            break;
+                            if changed {
+                                downloaded_size_changed = true;
+                                break;
+                            }
                         }
                     }
                     if downloaded_size_changed {
@@ -256,6 +246,7 @@ async fn async_start_download(
                 Ok(result) => {
                     if let Err(e) = result {
                         *cancel.lock().await = true;
+                        sender.lock().await.error_sender.send(e).unwrap();
                         change_download_status(&status, &sender, DownloaderStatus::Failed).await;
                         return;
                     }
@@ -274,6 +265,7 @@ async fn async_start_download(
     {
         change_download_status(&status, &sender, DownloaderStatus::DownloadPost).await;
         if let Err(e) = chunk_hub.lock().await.on_download_post().await {
+            sender.lock().await.error_sender.send(e).unwrap();
             change_download_status(&status, &sender, DownloaderStatus::Failed).await;
             return;
         }
@@ -281,7 +273,8 @@ async fn async_start_download(
 
     {
         change_download_status(&status, &sender, DownloaderStatus::FileVerify).await;
-        if let Err(_) = chunk_hub.lock().await.calculate_file_hash().await {
+        if let Err(e) = chunk_hub.lock().await.calculate_file_hash().await {
+            sender.lock().await.error_sender.send(e).unwrap();
             change_download_status(&status, &sender, DownloaderStatus::Failed).await;
             return;
         }

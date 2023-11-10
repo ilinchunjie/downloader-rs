@@ -1,7 +1,8 @@
 use std::fmt::{Display, Formatter};
-use tokio::task::JoinError;
 
+#[derive(Debug, Clone)]
 pub enum DownloadError {
+    None,
     FileOpen,
     FileSeek,
     FileWrite,
@@ -25,6 +26,7 @@ pub type Result<T> = core::result::Result<T, DownloadError>;
 impl Display for DownloadError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            DownloadError::None => { write!(f, "None") }
             DownloadError::FileOpen => { write!(f, "FileOpen") }
             DownloadError::FileSeek => { write!(f, "FileSeek") }
             DownloadError::FileWrite => { write!(f, "FileWrite") }

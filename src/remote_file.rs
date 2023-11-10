@@ -49,7 +49,7 @@ pub async fn head(client: &Arc<Mutex<Client>>, url: &str) -> crate::error::Resul
             let headers = response.headers();
             Ok(RemoteFile::new(headers))
         }
-        Err(e) => {
+        Err(_e) => {
             return Err(DownloadError::Head);
         }
     }

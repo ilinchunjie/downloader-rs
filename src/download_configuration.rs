@@ -1,6 +1,3 @@
-use std::fs;
-use std::ops::Deref;
-use std::path::{Path};
 use std::sync::Arc;
 use crate::file_verify::FileVerify;
 
@@ -67,7 +64,7 @@ impl DownloadConfigurationBuilder {
         self.validate()
     }
 
-    fn validate(mut self) -> DownloadConfiguration {
+    fn validate(self) -> DownloadConfiguration {
         if self.config.url == None {
             panic!("Download address not configured.");
         }

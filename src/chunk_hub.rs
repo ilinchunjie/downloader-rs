@@ -1,4 +1,3 @@
-use std::ops::Deref;
 use std::sync::{Arc};
 use tokio::{fs, spawn};
 use tokio::fs::OpenOptions;
@@ -48,12 +47,12 @@ impl ChunkHub {
     pub async fn get_downloaded_size(&self) -> u64 {
         let mut downloaded_size = 0u64;
         for chunk in &self.chunks {
-            downloaded_size += chunk.lock().await.chunk_range.length();
+            downloaded_size += chunk.lock().await.get_downloaded_size();
         }
         downloaded_size
     }
 
-    pub async fn validate(&mut self) -> Vec<Receiver<u64>> {
+    pub async fn validate(&mut self) -> crate::error::Result<Vec<Receiver<u64>>> {
         let config = self.config.lock().await;
         let mut chunk_count = 1;
         if config.support_range_download && config.chunk_download {
@@ -77,7 +76,7 @@ impl ChunkHub {
                 sender,
             );
             if version == 0 ||version != config.remote_version {
-                chunk.delete_chunk_file().await;
+                chunk.delete_chunk_file().await?;
             } else {
                 chunk.validate().await;
             }
@@ -88,14 +87,14 @@ impl ChunkHub {
 
         drop(config);
 
-        self.save_local_version().await;
+        self.save_local_version().await?;
 
-        downloaded_size_receivers
+        Ok(downloaded_size_receivers)
     }
 
-    async fn save_local_version(&mut self) {
+    async fn save_local_version(&mut self) -> crate::error::Result<()> {
         let config = self.config.lock().await;
-        chunk_metadata::save_local_version(config.get_file_path(), config.remote_version).await;
+        chunk_metadata::save_local_version(config.get_file_path(), config.remote_version).await
     }
 
     pub async fn calculate_file_hash(&self) -> crate::error::Result<()> {
@@ -134,29 +133,46 @@ impl ChunkHub {
 
     pub async fn on_download_post(&mut self) -> crate::error::Result<()> {
         let config = self.config.lock().await;
-        let mut output = OpenOptions::new().create(true).write(true).open(config.get_file_path()).await;
-        if let Ok(file) = &mut output {
-            let mut buffer = vec![0; 8192];
-            for i in 0..self.chunk_length {
-                let chunk_path = format!("{}.chunk{}", config.get_file_path(), i);
-                if let Ok(chunk_file) = &mut tokio::fs::File::open(chunk_path).await {
-                    loop {
-                        if let Ok(len) = chunk_file.read(&mut buffer).await {
-                            if len == 0 {
-                                break;
+        match self.chunk_length {
+            1 => {
+                let chunk_path = format!("{}.chunk{}", config.get_file_path(), 0);
+                if let Err(e) = fs::rename(&chunk_path, config.get_file_path()).await {
+                    return Err(DownloadError::FileRename(format!("文件重命名失败 {}", e)));
+                }
+            }
+            _ => {
+                let mut output = OpenOptions::new().create(true).write(true).open(config.get_file_path()).await;
+                if let Ok(file) = &mut output {
+                    let mut buffer = vec![0; 8192];
+                    for i in 0..self.chunk_length {
+                        let chunk_path = format!("{}.chunk{}", config.get_file_path(), i);
+                        if let Ok(chunk_file) = &mut tokio::fs::File::open(chunk_path).await {
+                            loop {
+                                if let Ok(len) = chunk_file.read(&mut buffer).await {
+                                    if len == 0 {
+                                        break;
+                                    }
+                                    if let Err(_e) = file.write(&buffer[0..len]).await {
+                                        return Err(DownloadError::FileWrite);
+                                    }
+                                } else {
+                                    return Err(DownloadError::FileWrite);
+                                }
                             }
-                            file.write(&buffer[0..len]).await;
-                        } else {
-                            return Err(DownloadError::FileWrite);
+                        }
+                    }
+
+                    if let Err(_e) = file.flush().await {
+                        return Err(DownloadError::FileFlush);
+                    }
+
+                    for i in 0..self.chunk_length {
+                        let chunk_path = format!("{}.chunk{}", config.get_file_path(), i);
+                        if let Err(_e) = fs::remove_file(chunk_path).await {
+                            return Err(DownloadError::DeleteFile);
                         }
                     }
                 }
-            }
-            file.flush().await;
-
-            for i in 0..self.chunk_length {
-                let chunk_path = format!("{}.chunk{}", config.get_file_path(), i);
-                fs::remove_file(chunk_path).await;
             }
         }
 

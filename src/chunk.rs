@@ -69,8 +69,12 @@ impl Chunk {
     }
 
     pub async fn delete_chunk_file(&self) -> crate::error::Result<()> {
-        if let Err(e) = tokio::fs::remove_file(&self.file_path).await {
-            return Err(DownloadError::DeleteFile);
+        if let Ok(exist) = tokio::fs::try_exists(&self.file_path).await {
+            if exist {
+                if let Err(_e) = tokio::fs::remove_file(&self.file_path).await {
+                    return Err(DownloadError::DeleteFile);
+                }
+            }
         }
 
         Ok(())
@@ -95,10 +99,6 @@ impl Chunk {
 
         self.valid = false;
         return;
-    }
-
-    pub fn chunk_range(&self) -> ChunkRange {
-        return self.chunk_range;
     }
 }
 
