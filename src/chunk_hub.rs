@@ -1,4 +1,5 @@
 use std::sync::{Arc};
+use reqwest::Client;
 use tokio::{fs, spawn};
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -32,12 +33,14 @@ impl ChunkHub {
 
     pub fn start_download(
         &mut self,
+        client: Arc<Client>,
         options: Arc<Mutex<DownloadOptions>>,
     ) -> Vec<JoinHandle<crate::error::Result<()>>> {
         let mut handles: Vec<JoinHandle<crate::error::Result<()>>> = Vec::with_capacity(self.chunk_length);
         for chunk in &self.chunks {
             let handle = spawn(start_download_chunks(
                 self.config.clone(),
+                client.clone(),
                 chunk.clone(),
                 options.clone(),
             ));
@@ -69,7 +72,7 @@ impl ChunkHub {
 
         let chunk_ranges = ChunkRange::from_chunk_count(remote_file.total_length, chunk_count as u64, self.config.chunk_size);
 
-        let mut downloaded_size_receivers : Vec<Receiver<u64>> = Vec::with_capacity(chunk_count);
+        let mut downloaded_size_receivers: Vec<Receiver<u64>> = Vec::with_capacity(chunk_count);
 
         for i in 0..chunk_count {
             let file_path = format!("{}.chunk{}", self.config.get_file_path(), i);
@@ -80,7 +83,7 @@ impl ChunkHub {
                 self.config.range_download && remote_file.support_range_download,
                 sender,
             );
-            if version == 0 ||version != remote_version {
+            if version == 0 || version != remote_version {
                 chunk.delete_chunk_file().await?;
             } else {
                 chunk.validate().await;
@@ -186,12 +189,13 @@ impl ChunkHub {
 
 async fn start_download_chunks(
     config: Arc<DownloadConfiguration>,
+    client: Arc<Client>,
     chunk: Arc<Mutex<Chunk>>,
     options: Arc<Mutex<DownloadOptions>>,
 ) -> crate::error::Result<()> {
     if chunk.lock().await.valid {
         return Ok(());
     }
-    chunk::start_download(config, chunk, options).await?;
+    chunk::start_download(config, client, chunk, options).await?;
     Ok(())
 }

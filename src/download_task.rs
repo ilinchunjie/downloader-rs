@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use futures::StreamExt;
+use reqwest::Client;
 use reqwest::header::RANGE;
 use tokio::sync::Mutex;
 use crate::chunk::{Chunk};
@@ -17,6 +18,7 @@ impl DownloadTask {
     pub async fn start_download(
         &mut self,
         config: Arc<DownloadConfiguration>,
+        client: Arc<Client>,
         options: Arc<Mutex<DownloadOptions>>,
         download_chunk: Arc<Mutex<Chunk>>,
     ) -> crate::error::Result<()> {
@@ -33,7 +35,7 @@ impl DownloadTask {
                 }
             }
 
-            let request = options.lock().await.client.lock().await
+            let request = client
                 .get(config.url())
                 .header(RANGE, range_str);
 

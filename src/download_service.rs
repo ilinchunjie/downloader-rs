@@ -19,7 +19,7 @@ pub struct DownloadService {
     parallel_count: Arc<Mutex<u16>>,
     download_queue: Arc<Mutex<DownloaderQueue>>,
     thread_handle: Option<JoinHandle<()>>,
-    client: Arc<Mutex<Client>>,
+    client: Arc<Client>,
 }
 
 impl DownloadService {
@@ -30,7 +30,7 @@ impl DownloadService {
             parallel_count: Arc::new(Mutex::new(32)),
             thread_handle: None,
             cancel: Arc::new(Mutex::new(false)),
-            client: Arc::new(Mutex::new(Client::new())),
+            client: Arc::new(Client::new()),
         }
     }
 
@@ -85,7 +85,7 @@ impl DownloadService {
 
     pub fn add_downloader(&mut self, config: DownloadConfiguration) -> DownloadOperation {
         let (tx, rx) = download_tracker::new();
-        let mut downloader = Downloader::new(config, self.client.clone(), Arc::new(Mutex::new(tx)));
+        let mut downloader = Downloader::new(config, self.client.clone(), Arc::new(tx));
         downloader.pending();
         let downloader = Arc::new(Mutex::new(downloader));
         self.download_queue.blocking_lock().push_front(downloader.clone());
@@ -119,8 +119,8 @@ mod test {
         service.start_service();
         let url = "https://gh.con.sh/https://github.com/AaronFeng753/Waifu2x-Extension-GUI/releases/download/v2.21.12/Waifu2x-Extension-GUI-v2.21.12-Portable.7z".to_string();
         let config = DownloadConfiguration::new()
-            .set_url(url)
-            .set_file_path("temp/temp.7z".to_string())
+            .set_url(&url)
+            .set_file_path("temp/temp.7z")
             .set_chunk_download(true)
             .set_chunk_size(1024 * 1024 * 20)
             .set_retry_times_on_failure(2)

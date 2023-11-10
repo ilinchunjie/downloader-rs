@@ -24,13 +24,13 @@ impl DownloadConfigurationBuilder {
         }
     }
 
-    pub fn set_url(mut self, url: String) -> DownloadConfigurationBuilder {
-        self.config.url = Some(Arc::new(url));
+    pub fn set_url(mut self, url: &str) -> DownloadConfigurationBuilder {
+        self.config.url = Some(Arc::new(url.to_string()));
         self
     }
 
-    pub fn set_file_path(mut self, path: String) -> DownloadConfigurationBuilder {
-        self.config.path = Some(Arc::new(path));
+    pub fn set_file_path(mut self, path: &str) -> DownloadConfigurationBuilder {
+        self.config.path = Some(Arc::new(path.to_string()));
         self
     }
 

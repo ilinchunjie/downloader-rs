@@ -1,5 +1,4 @@
 use std::sync::{Arc};
-use tokio::sync::Mutex;
 use chrono::DateTime;
 use reqwest::{Client};
 use reqwest::header::{HeaderMap};
@@ -43,12 +42,12 @@ impl RemoteFile {
     }
 }
 
-pub async fn head(client: &Arc<Mutex<Client>>, config: Arc<DownloadConfiguration>) -> crate::error::Result<RemoteFile> {
+pub async fn head(client: &Arc<Client>, config: Arc<DownloadConfiguration>) -> crate::error::Result<RemoteFile> {
     let retry_count_limit = config.retry_times_on_failure;
     let mut retry_count = 0;
 
     'r: loop {
-        let request = client.lock().await.head(config.url());
+        let request = client.head(config.url());
         let result = request.send().await;
         if let Err(_) = result {
             if retry_count >= retry_count_limit {
