@@ -86,7 +86,10 @@ impl ChunkHub {
             if version == 0 || version != remote_version {
                 chunk.delete_chunk_file().await?;
             } else {
-                chunk.validate().await;
+                match chunk.validate().await {
+                    2 => chunk.delete_chunk_file().await,
+                    _ => {},
+                }
             }
             downloaded_size_receivers.push(receiver);
             self.chunks.push(Arc::new(Mutex::new(chunk)));

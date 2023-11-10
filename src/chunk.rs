@@ -82,25 +82,26 @@ impl Chunk {
         Ok(())
     }
 
-    pub async fn validate(&mut self) {
+    pub async fn validate(&mut self) -> u8 {
         if self.chunk_range.end == 0 {
             self.valid = false;
-            return;
+            return 1;
         }
 
         let metadata = tokio::fs::metadata(&self.file_path).await;
         if let Ok(metadata) = metadata {
             if metadata.len() > self.chunk_range.chunk_length() {
                 self.valid = false;
-                return;
+                return 2;
             }
 
             self.chunk_range.set_position(self.chunk_range.start + metadata.len());
             self.valid = self.chunk_range.eof();
+            return 0;
         }
 
         self.valid = false;
-        return;
+        return 3;
     }
 }
 
