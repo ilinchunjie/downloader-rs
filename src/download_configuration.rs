@@ -35,6 +35,11 @@ impl DownloadConfigurationBuilder {
         self
     }
 
+    pub fn set_remote_version(mut self, version: i64) -> DownloadConfigurationBuilder {
+        self.config.remote_version = version;
+        self
+    }
+
     pub fn set_range_download(mut self, range_download: bool) -> DownloadConfigurationBuilder {
         self.config.range_download = range_download;
         self
