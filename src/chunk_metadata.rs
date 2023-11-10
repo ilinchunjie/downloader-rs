@@ -1,3 +1,5 @@
+use std::path::Path;
+use tokio::fs;
 use tokio::fs::{OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use crate::error::DownloadError;
@@ -18,6 +20,12 @@ pub async fn get_local_version(path: impl AsRef<str>) -> i64 {
 
 pub async fn save_local_version(path: impl AsRef<str>, version: i64) -> crate::error::Result<()> {
     let meta_file_path = format!("{}.metadata", path.as_ref());
+    let path = Path::new(&meta_file_path);
+    if let Some(parent) = path.parent() {
+        if parent.symlink_metadata().is_err() {
+            let _ = fs::create_dir_all(parent).await;
+        }
+    }
     if let Ok(meta_file) = &mut OpenOptions::new().write(true).create(true).open(&meta_file_path).await {
         if let Err(_) = meta_file.write_i64_le(version).await {
             return Err(DownloadError::FileWrite);

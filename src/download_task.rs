@@ -1,4 +1,3 @@
-use std::ops::{Deref};
 use std::sync::Arc;
 use futures::StreamExt;
 use reqwest::header::RANGE;
@@ -44,7 +43,7 @@ impl DownloadTask {
                 return Ok(());
             }
 
-            if let Err(e) = result {
+            if let Err(_) = result {
                 if retry_count >= retry_count_limit {
                     return Err(DownloadError::Request);
                 } else {

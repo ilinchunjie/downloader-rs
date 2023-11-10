@@ -43,7 +43,6 @@ pub extern "C" fn add_downloader(ptr: *mut DownloadService, config: DownloadConf
         .set_chunk_size(config.chunk_siez)
         .set_remote_version(config.version)
         .set_retry_times_on_failure(config.retry_times)
-        .create_dir(true)
         .build();
     let operation = download_service.add_downloader(config);
     Box::into_raw(Box::new(operation))

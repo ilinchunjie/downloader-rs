@@ -3,7 +3,9 @@ use xxhash_rust::xxh64;
 #[cfg(feature = "md5")]
 use md5::Context;
 
+#[allow(unused)]
 use tokio::io::{AsyncReadExt, BufReader};
+#[allow(unused)]
 use crate::error::DownloadError;
 
 #[derive(PartialEq)]

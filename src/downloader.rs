@@ -1,8 +1,6 @@
 use std::fmt::{Display, Formatter};
-use std::path::Path;
 use std::sync::{Arc};
 use reqwest::Client;
-use tokio::fs;
 use tokio::spawn;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -151,15 +149,6 @@ async fn async_start_download(
     status: Arc<Mutex<DownloaderStatus>>) {
     if options.lock().await.cancel {
         return;
-    }
-
-    if config.create_dir {
-        let path = Path::new(config.get_file_path());
-        if let Some(directory) = path.parent() {
-            if !directory.exists() {
-                let _ = fs::create_dir_all(directory).await;
-            }
-        }
     }
 
     change_download_status(&status, &sender, DownloaderStatus::Head).await;

@@ -10,7 +10,6 @@ pub struct DownloadConfiguration {
     pub retry_times_on_failure: u8,
     pub range_download: bool,
     pub chunk_download: bool,
-    pub create_dir: bool,
     pub file_verify: FileVerify,
 }
 
@@ -65,11 +64,6 @@ impl DownloadConfigurationBuilder {
         self
     }
 
-    pub fn create_dir(mut self, create_dir: bool) -> DownloadConfigurationBuilder {
-        self.config.create_dir = create_dir;
-        self
-    }
-
     pub fn build(self) -> DownloadConfiguration {
         self.validate()
     }
@@ -99,7 +93,6 @@ impl DownloadConfiguration {
             total_length: 0,
             remote_version: 0,
             retry_times_on_failure: 0,
-            create_dir: true,
         };
         DownloadConfigurationBuilder::new(config)
     }

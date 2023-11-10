@@ -50,7 +50,7 @@ pub async fn head(client: &Arc<Mutex<Client>>, config: Arc<DownloadConfiguration
     'r: loop {
         let request = client.lock().await.head(config.url());
         let result = request.send().await;
-        if let Err(e) = result {
+        if let Err(_) = result {
             if retry_count >= retry_count_limit {
                 return Err(DownloadError::Head);
             } else {

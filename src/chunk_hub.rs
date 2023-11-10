@@ -5,6 +5,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::sync::watch::{Receiver, channel};
 use tokio::task::JoinHandle;
+#[allow(unused_imports)]
 use crate::{chunk, chunk_metadata, file_verify};
 use crate::chunk::{Chunk};
 use crate::chunk_range::ChunkRange;
@@ -127,6 +128,7 @@ impl ChunkHub {
             }
         }
 
+        #[allow(unreachable_code)]
         Ok(())
     }
 
