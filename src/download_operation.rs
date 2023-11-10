@@ -1,7 +1,8 @@
 use std::sync::{Arc};
 use tokio::sync::Mutex;
+use crate::download_status::DownloadStatus;
 use crate::download_receiver::DownloadReceiver;
-use crate::downloader::{Downloader, DownloaderStatus};
+use crate::downloader::{Downloader};
 use crate::error::DownloadError;
 
 pub struct DownloadOperation {
@@ -19,9 +20,9 @@ impl DownloadOperation {
         }
     }
 
-    pub fn status(&self) -> DownloaderStatus {
+    pub fn status(&self) -> DownloadStatus {
         let status = *self.download_receiver.status_receiver.borrow();
-        return DownloaderStatus::from(status);
+        return DownloadStatus::from(status);
     }
 
     pub fn downloaded_size(&self) -> u64 {
@@ -47,7 +48,7 @@ impl DownloadOperation {
     }
 
     pub fn is_error(&self) -> bool {
-        return self.status() == DownloaderStatus::Failed;
+        return self.status() == DownloadStatus::Failed;
     }
 
     pub fn error(&self) -> DownloadError {

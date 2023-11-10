@@ -9,6 +9,7 @@ mod error;
 mod download_tracker;
 mod download_sender;
 mod download_receiver;
+pub mod download_status;
 pub mod file_verify;
 pub mod download_configuration;
 pub mod download_service;
