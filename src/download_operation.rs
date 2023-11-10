@@ -1,9 +1,7 @@
-use std::ops::Deref;
 use std::sync::{Arc};
 use tokio::sync::Mutex;
-use tokio::sync::watch::{Receiver, Sender};
 use crate::download_receiver::DownloadReceiver;
-use crate::downloader::{Downloader, DownloaderStatus};
+use crate::downloader::{Downloader};
 
 pub struct DownloadOperation {
     downloader: Arc<Mutex<Downloader>>,
@@ -42,7 +40,7 @@ impl DownloadOperation {
     }
 
     pub fn is_done(&self) -> bool {
-        return *self.download_receiver.is_done_receiver.borrow();
+        return self.downloader.blocking_lock().is_done();
     }
 
     pub fn stop(&self) {

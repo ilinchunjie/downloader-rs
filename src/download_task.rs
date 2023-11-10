@@ -7,41 +7,30 @@ use crate::chunk::{Chunk};
 use crate::downloader::DownloadOptions;
 use crate::error::DownloadError;
 
-#[derive(Clone)]
-pub struct DownloadTaskConfiguration {
-    pub url: Arc<String>,
-    pub range_download: bool,
-    pub range_start: u64,
-    pub range_end: u64,
-}
-
-pub struct DownloadTask {
-    config: DownloadTaskConfiguration,
-}
+pub struct DownloadTask {}
 
 impl DownloadTask {
-    pub fn new(config: DownloadTaskConfiguration) -> DownloadTask {
-        DownloadTask {
-            config,
-        }
+    pub fn new() -> DownloadTask {
+        DownloadTask {}
     }
 
     pub async fn start_download(
         &mut self,
+        url: Arc<String>,
         options: Arc<Mutex<DownloadOptions>>,
-        mut download_chunk: Chunk
+        download_chunk: Arc<Mutex<Chunk>>,
     ) -> crate::error::Result<()> {
         let mut range_str = String::new();
-        if self.config.range_download {
-            if self.config.range_start < self.config.range_end {
-                range_str = format!("bytes={}-{}", self.config.range_start, self.config.range_end);
-            } else {
-                range_str = format!("bytes={}-", self.config.range_start);
+        {
+            let range_download = download_chunk.lock().await.range_download;
+            if range_download {
+                let chunk = download_chunk.lock().await;
+                range_str = format!("bytes={}-{}", chunk.chunk_range.position, chunk.chunk_range.end);
             }
         }
 
         let request = options.lock().await.client.lock().await
-            .get(self.config.url.deref())
+            .get(url.deref())
             .header(RANGE, range_str);
 
         let result = request.send().await;
@@ -54,7 +43,7 @@ impl DownloadTask {
             Ok(response) => {
                 match response.error_for_status() {
                     Ok(response) => {
-                        download_chunk.setup().await?;
+                        download_chunk.lock().await.setup().await?;
                         let mut body = response.bytes_stream();
                         while let Some(chunk) = body.next().await {
                             if options.lock().await.cancel {
@@ -62,14 +51,14 @@ impl DownloadTask {
                             }
                             match chunk {
                                 Ok(bytes) => {
-                                    download_chunk.received_bytes_async(&bytes).await?;
+                                    download_chunk.lock().await.received_bytes_async(&bytes).await?;
                                 }
                                 Err(_e) => {
                                     return Err(DownloadError::ResponseChunk);
                                 }
                             }
                         }
-                        download_chunk.flush_async().await?;
+                        download_chunk.lock().await.flush_async().await?;
                     }
                     Err(_e) => {
                         return Err(DownloadError::Response);

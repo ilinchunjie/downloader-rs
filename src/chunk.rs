@@ -1,7 +1,7 @@
 use std::sync::{Arc};
 use tokio::sync::Mutex;
-use crate::chunk_operation::ChunkOperation;
-use crate::download_task::{DownloadTaskConfiguration, DownloadTask};
+use tokio::sync::watch::Sender;
+use crate::download_task::{DownloadTask};
 use crate::downloader::DownloadOptions;
 use crate::error::DownloadError;
 use crate::stream::Stream;
@@ -12,8 +12,8 @@ pub struct Chunk {
     pub stream: Option<Stream>,
     pub chunk_range: ChunkRange,
     pub range_download: bool,
+    pub downloaded_size_sender: Option<Sender<u64>>,
     pub valid: bool,
-    pub chunk_operation: Option<Arc<Mutex<ChunkOperation>>>
 }
 
 impl Default for Chunk {
@@ -23,28 +23,25 @@ impl Default for Chunk {
             stream: None,
             chunk_range: ChunkRange::default(),
             range_download: false,
+            downloaded_size_sender: None,
             valid: false,
-            chunk_operation: None
         }
     }
 }
 
 impl Chunk {
-    pub fn new(file_path: String, chunk_range: ChunkRange, range_download: bool) -> Self {
+    pub fn new(file_path: String, chunk_range: ChunkRange, range_download: bool, downloaded_size_sender: Sender<u64>) -> Self {
         Self {
             file_path,
             chunk_range,
             range_download,
+            downloaded_size_sender: Some(downloaded_size_sender),
             ..Default::default()
         }
     }
 
-    pub fn get_downloaded_size(& self) -> u64 {
-        return  self.chunk_range.length();
-    }
-
-    pub fn set_chunk_operation(&mut self, operation: Arc<Mutex<ChunkOperation>>) {
-        self.chunk_operation = Some(operation);
+    pub fn get_downloaded_size(&self) -> u64 {
+        return self.chunk_range.length();
     }
 
     pub async fn setup(&mut self) -> crate::error::Result<()> {
@@ -57,8 +54,8 @@ impl Chunk {
         if let Some(stream) = &mut self.stream {
             stream.write_async(buffer).await?;
             self.chunk_range.position += buffer.len() as u64;
-            if let Some(operation) = &self.chunk_operation {
-                operation.lock().await.set_downloaded_size(self.chunk_range.length());
+            if let Some(sender) = &self.downloaded_size_sender {
+                sender.send(self.chunk_range.length()).unwrap();
             }
         }
         Ok(())
@@ -107,16 +104,9 @@ impl Chunk {
 
 pub async fn start_download(
     url: Arc<String>,
-    chunk: Chunk,
+    chunk: Arc<Mutex<Chunk>>,
     options: Arc<Mutex<DownloadOptions>>,
 ) -> crate::error::Result<()> {
-    let config = DownloadTaskConfiguration {
-        range_download: chunk.range_download,
-        range_start: chunk.chunk_range.position,
-        range_end: chunk.chunk_range.end,
-        url,
-    };
-
-    let mut task = DownloadTask::new(config);
-    task.start_download(options, chunk).await
+    let mut task = DownloadTask::new();
+    task.start_download(url, options, chunk).await
 }

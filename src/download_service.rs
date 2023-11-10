@@ -61,9 +61,9 @@ impl DownloadService {
                             downloader.lock().await.start_download();
                         }
                     }
-                    for i in (0 as usize..downloadings.len()).rev() {
+                    for i in (0..downloadings.len()).rev() {
                         let downloader = downloadings.get(i).unwrap();
-                        if downloader.lock().await.is_done_async().await {
+                        if downloader.lock().await.is_done() {
                             downloadings.remove(i);
                             downloading_count -= 1;
                         }
@@ -121,51 +121,16 @@ mod test {
         let config = DownloadConfiguration::new()
             .set_url(url)
             .set_file_path("temp/temp.7z".to_string())
-            .set_chunk_download(false)
+            .set_chunk_download(true)
             .set_chunk_size(1024 * 1024 * 20)
             .create_dir(true)
             .build();
         let operation = service.add_downloader(config);
 
         while !operation.is_done() {
-            println!("{}", operation.downloaded_size());
+            //println!("{}", operation.downloaded_size());
         }
 
         service.stop();
-    }
-
-    #[tokio::test]
-    async fn test_watch() {
-        let handle = thread::spawn(move || {
-            let rt = runtime::Builder::new_multi_thread()
-                .worker_threads(4)
-                .enable_all()
-                .build()
-                .expect("创建失败");
-
-            rt.block_on(async {
-                let (tx, mut rx) = tokio::sync::watch::channel(0u64);
-                tokio::spawn(async move {
-                    loop {
-                        println!("receive {}", *rx.borrow());
-                        tokio::time::sleep(Duration::from_secs(2)).await;
-                    }
-                });
-
-                tokio::spawn(async move {
-                    let mut value = 0u64;
-                    loop {
-                        tx.send(value);
-                        println!("send {}", value);
-                        tokio::time::sleep(Duration::from_secs(2)).await;
-                        value += 1;
-                    }
-                });
-
-                loop {}
-            })
-        });
-
-        handle.join().expect("");
     }
 }

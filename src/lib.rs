@@ -5,7 +5,6 @@ mod chunk;
 mod chunk_metadata;
 mod chunk_hub;
 mod chunk_range;
-mod chunk_operation;
 mod error;
 mod download_tracker;
 mod download_sender;

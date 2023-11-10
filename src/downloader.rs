@@ -116,37 +116,15 @@ impl Downloader {
         self.thread_handle = Some(handle);
     }
 
-    pub fn status(&self) -> u8 {
-        let status = *self.download_status.blocking_lock();
-        let status: u8 = status.into();
-        return status;
-    }
-
-    pub fn get_downloaded_size(&self) -> u64 {
-        let size = self.chunk_hub.blocking_lock().get_downloaded_size();
-        return size;
-    }
-
     pub fn get_total_size(&self) -> u64 {
         self.config.blocking_lock().total_length
     }
 
     pub fn is_done(&self) -> bool {
         if let Some(handle) = &self.thread_handle {
-            if !handle.is_finished() {
-                return false;
-            }
+            return handle.is_finished();
         }
-        return *self.download_status.blocking_lock() == DownloaderStatus::Complete
-            || *self.download_status.blocking_lock() == DownloaderStatus::Failed
-            || *self.download_status.blocking_lock() == DownloaderStatus::Stop;
-    }
-
-    pub async fn is_done_async(&self) -> bool {
-        let status = *self.download_status.lock().await;
-        return status == DownloaderStatus::Complete
-            || status == DownloaderStatus::Failed
-            || status == DownloaderStatus::Stop;
+        return false;
     }
 
     pub fn is_stop(&self) -> bool {
@@ -177,14 +155,6 @@ impl Downloader {
         self.options.blocking_lock().cancel = true;
         *self.download_status.blocking_lock() = DownloaderStatus::Stop;
     }
-
-    pub fn get_chunk_count(&self) -> usize {
-        return self.chunk_hub.blocking_lock().get_chunk_count();
-    }
-
-    pub fn get_chunk_download_progress(&self, index: usize) -> f64 {
-        return self.chunk_hub.blocking_lock().get_chunk_download_progress(index);
-    }
 }
 
 async fn change_download_status(status: &Arc<Mutex<DownloaderStatus>>, sender: &Arc<Mutex<DownloadSender>>, to_status: DownloaderStatus) {
@@ -206,10 +176,10 @@ async fn async_start_download(
         change_download_status(&status, &sender, DownloaderStatus::Head).await;
     }
 
-    let remote_file_info: Option<RemoteFile>;
+    let remote_file: Option<RemoteFile>;
     match remote_file::head(&options.lock().await.client, config.lock().await.url()).await {
         Ok(value) => {
-            remote_file_info = Some(value);
+            remote_file = Some(value);
         }
         Err(_) => {
             change_download_status(&status, &sender, DownloaderStatus::Failed).await;
@@ -225,12 +195,15 @@ async fn async_start_download(
         change_download_status(&status, &sender, DownloaderStatus::Download).await;
     }
 
-    if let Some(remote_file_info) = remote_file_info {
+    if let Some(remote_file) = &remote_file {
         let mut config = config.lock().await;
-        config.remote_version = remote_file_info.last_modified_time;
-        config.support_range_download = remote_file_info.support_range_download;
-        config.total_length = remote_file_info.total_length;
+        config.remote_version = remote_file.last_modified_time;
+        config.support_range_download = remote_file.support_range_download;
+        config.total_length = remote_file.total_length;
+        sender.lock().await.download_total_size_sender.send(remote_file.total_length).unwrap();
     }
+
+    drop(remote_file);
 
     if options.lock().await.cancel {
         return;
@@ -249,22 +222,53 @@ async fn async_start_download(
     }
 
     {
-        let chunks = chunk_hub.lock().await.validate().await;
-        let handles = chunk_hub.lock().await.start_download(options.clone(), chunks);
+        let receivers = chunk_hub.lock().await.validate().await;
+        let handles = chunk_hub.lock().await.start_download(options.clone());
+        let cancel = Arc::new(Mutex::new(false));
+
+        {
+            let chunk_hub = chunk_hub.clone();
+            let sender = sender.clone();
+            let cancel = cancel.clone();
+            spawn(async move {
+                loop {
+                    let mut downloaded_size_changed = false;
+                    for receiver in &receivers {
+                        if let Ok(changed) = receiver.has_changed() {
+                            downloaded_size_changed = true;
+                            break;
+                        }
+                    }
+                    if downloaded_size_changed {
+                        let downloaded_size = chunk_hub.lock().await.get_downloaded_size().await;
+                        sender.lock().await.downloaded_size_sender.send(downloaded_size).unwrap();
+                    }
+
+                    if *cancel.lock().await {
+                        break
+                    }
+                }
+            });
+        }
+
         for handle in handles {
             match handle.await {
                 Ok(result) => {
                     if let Err(e) = result {
+                        *cancel.lock().await = true;
                         change_download_status(&status, &sender, DownloaderStatus::Failed).await;
                         return;
                     }
                 }
                 Err(_) => {
+                    *cancel.lock().await = true;
                     change_download_status(&status, &sender, DownloaderStatus::Failed).await;
                     return;
                 }
             }
         }
+
+        *cancel.lock().await = true;
     }
 
     {
