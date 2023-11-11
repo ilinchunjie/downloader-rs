@@ -8,6 +8,7 @@ pub struct DownloadConfiguration {
     pub total_length: u64,
     pub remote_version: i64,
     pub retry_times_on_failure: u8,
+    pub receive_bytes_per_second: u64,
     pub range_download: bool,
     pub chunk_download: bool,
     pub file_verify: FileVerify,
@@ -59,6 +60,11 @@ impl DownloadConfigurationBuilder {
         self
     }
 
+    pub fn set_download_speed_limit(mut self, receive_bytes_per_second: u64) -> DownloadConfigurationBuilder {
+        self.config.receive_bytes_per_second = receive_bytes_per_second;
+        self
+    }
+
     pub fn set_file_verify(mut self, file_verify: FileVerify) -> DownloadConfigurationBuilder {
         self.config.file_verify = file_verify;
         self
@@ -93,6 +99,7 @@ impl DownloadConfiguration {
             total_length: 0,
             remote_version: 0,
             retry_times_on_failure: 0,
+            receive_bytes_per_second: 0,
         };
         DownloadConfigurationBuilder::new(config)
     }

@@ -1,8 +1,10 @@
 use std::sync::Arc;
+use std::time::Duration;
 use futures::StreamExt;
 use reqwest::Client;
 use reqwest::header::RANGE;
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 use crate::chunk::{Chunk};
 use crate::download_configuration::DownloadConfiguration;
 use crate::downloader::DownloadOptions;
@@ -76,6 +78,10 @@ impl DownloadTask {
                 match chunk {
                     Ok(bytes) => {
                         download_chunk.lock().await.received_bytes_async(&bytes).await?;
+                        if config.receive_bytes_per_second > 0 {
+                            let delay_duration = Duration::from_secs_f64(bytes.len() as f64 / config.receive_bytes_per_second as f64);
+                            sleep(delay_duration).await;
+                        }
                     }
                     Err(_e) => {
                         if retry_count >= retry_count_limit {

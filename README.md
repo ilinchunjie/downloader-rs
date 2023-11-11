@@ -27,7 +27,7 @@ a simple file downloader for rust
 - [x] download in memory
 - [x] thread count limit
 - [x] md5/xxHash file verification
-- [ ] bandwidth limit
+- [x] download speed limit
 - [x] retry times after request failure
 - [ ] incremental updates by using the fast CDC algorithm.
 

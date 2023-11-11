@@ -87,7 +87,7 @@ impl ChunkHub {
                 chunk.delete_chunk_file().await?;
             } else {
                 match chunk.validate().await {
-                    2 => chunk.delete_chunk_file().await,
+                    2 => chunk.delete_chunk_file().await?,
                     _ => {},
                 }
             }

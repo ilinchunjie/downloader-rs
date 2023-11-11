@@ -45,6 +45,10 @@ impl Stream {
             return Err(DownloadError::FileFlush);
         }
 
+        if let Err(_e) = self.file.sync_all().await {
+            return Err(DownloadError::FileFlush);
+        }
+
         Ok(())
     }
 }

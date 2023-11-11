@@ -108,8 +108,10 @@ impl DownloadService {
 #[cfg(test)]
 mod test {
     use std::thread;
+    use std::thread::sleep;
     use std::time::Duration;
     use tokio::runtime;
+    use tokio::time::Instant;
     use crate::download_configuration::DownloadConfiguration;
     use crate::download_service::DownloadService;
 
@@ -121,14 +123,28 @@ mod test {
         let config = DownloadConfiguration::new()
             .set_url(&url)
             .set_file_path("temp/temp.7z")
-            .set_chunk_download(true)
+            .set_chunk_download(false)
             .set_chunk_size(1024 * 1024 * 20)
             .set_retry_times_on_failure(2)
+            .set_download_speed_limit(1024 * 1024)
             .build();
         let operation = service.add_downloader(config);
 
+
+        let mut last_downloaded_size = 0u64;
+        let mut last_time = Instant::now();
         while !operation.is_done() {
-            println!("{}", operation.downloaded_size());
+            sleep(Duration::from_secs(1));
+            let downloaded_size = operation.downloaded_size();
+            if downloaded_size > last_downloaded_size {
+                let delta = (downloaded_size - last_downloaded_size) as f64;
+                let seconds = Instant::now().duration_since(last_time).as_secs_f64();
+
+                println!("download speed {} per seconds", (delta / seconds) / 1024f64 / 1024f64);
+
+                last_downloaded_size = downloaded_size;
+                last_time = Instant::now();
+            }
         }
 
         if operation.is_error() {
