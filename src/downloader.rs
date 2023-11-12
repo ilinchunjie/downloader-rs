@@ -1,7 +1,7 @@
 use std::sync::{Arc};
 use reqwest::Client;
 use tokio::spawn;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use crate::download_status::DownloadStatus;
@@ -14,7 +14,7 @@ use crate::remote_file::{RemoteFile};
 pub struct Downloader {
     config: Arc<DownloadConfiguration>,
     client: Arc<Client>,
-    download_status: Arc<Mutex<DownloadStatus>>,
+    download_status: Arc<RwLock<DownloadStatus>>,
     chunk_hub: Arc<Mutex<ChunkHub>>,
     cancel_token: CancellationToken,
     sender: Arc<DownloadSender>,
@@ -28,7 +28,7 @@ impl Downloader {
             config: config.clone(),
             client: client,
             chunk_hub: Arc::new(Mutex::new(ChunkHub::new(config.clone()))),
-            download_status: Arc::new(Mutex::new(DownloadStatus::None)),
+            download_status: Arc::new(RwLock::new(DownloadStatus::None)),
             cancel_token: CancellationToken::new(),
             sender,
             thread_handle: None,
@@ -55,23 +55,23 @@ impl Downloader {
     }
 
     pub async fn is_pending_async(&self) -> bool {
-        return *self.download_status.lock().await == DownloadStatus::Pending;
+        return *self.download_status.read().await == DownloadStatus::Pending;
     }
 
     pub fn pending(&mut self) {
-        *self.download_status.blocking_lock() = DownloadStatus::Pending;
+        *self.download_status.blocking_write() = DownloadStatus::Pending;
         self.sender.status_sender.send((DownloadStatus::Pending).into()).unwrap();
     }
 
     pub fn stop(&mut self) {
         self.cancel_token.cancel();
-        *self.download_status.blocking_lock() = DownloadStatus::Stop;
+        *self.download_status.blocking_write() = DownloadStatus::Stop;
         self.sender.status_sender.send((DownloadStatus::Stop).into()).unwrap();
     }
 }
 
-async fn change_download_status(status: &Arc<Mutex<DownloadStatus>>, sender: &Arc<DownloadSender>, to_status: DownloadStatus) {
-    *status.lock().await = to_status;
+async fn change_download_status(status: &Arc<RwLock<DownloadStatus>>, sender: &Arc<DownloadSender>, to_status: DownloadStatus) {
+    *status.write().await = to_status;
     sender.status_sender.send(to_status.into()).unwrap();
 }
 
@@ -81,7 +81,7 @@ async fn async_start_download(
     chunk_hub: Arc<Mutex<ChunkHub>>,
     cancel_token: CancellationToken,
     sender: Arc<DownloadSender>,
-    status: Arc<Mutex<DownloadStatus>>) {
+    status: Arc<RwLock<DownloadStatus>>) {
 
     if cancel_token.is_cancelled() {
         return;
