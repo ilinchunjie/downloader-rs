@@ -4,7 +4,8 @@ use std::thread;
 use std::thread::JoinHandle;
 use reqwest::Client;
 use tokio::runtime;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
+use tokio_util::sync::CancellationToken;
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_operation::DownloadOperation;
 use crate::download_tracker;
@@ -15,8 +16,8 @@ type DownloaderQueue = VecDeque<Arc<Mutex<Downloader>>>;
 
 pub struct DownloadService {
     worker_thread_count: u8,
-    cancel: Arc<Mutex<bool>>,
-    parallel_count: Arc<Mutex<u16>>,
+    cancel_token: CancellationToken,
+    parallel_count: Arc<RwLock<u16>>,
     download_queue: Arc<Mutex<DownloaderQueue>>,
     thread_handle: Option<JoinHandle<()>>,
     client: Arc<Client>,
@@ -27,15 +28,15 @@ impl DownloadService {
         Self {
             worker_thread_count: 4,
             download_queue: Arc::new(Mutex::new(DownloaderQueue::new())),
-            parallel_count: Arc::new(Mutex::new(32)),
+            parallel_count: Arc::new(RwLock::new(32)),
             thread_handle: None,
-            cancel: Arc::new(Mutex::new(false)),
+            cancel_token: CancellationToken::new(),
             client: Arc::new(Client::new()),
         }
     }
 
     pub fn start_service(&mut self) {
-        let cancel = self.cancel.clone();
+        let cancel_token = self.cancel_token.clone();
         let queue = self.download_queue.clone();
         let parallel_count = self.parallel_count.clone();
         let worker_thread_count = self.worker_thread_count as usize;
@@ -49,8 +50,8 @@ impl DownloadService {
             rt.block_on(async {
                 let mut downloading_count = 0;
                 let mut downloadings = Vec::new();
-                while !*cancel.lock().await {
-                    if downloading_count < *parallel_count.lock().await {
+                while !cancel_token.is_cancelled() {
+                    if downloading_count < *parallel_count.read().await {
                         if let Some(downloader) = queue.lock().await.pop_front() {
                             let downloader_clone = downloader.clone();
                             if !downloader.lock().await.is_pending_async().await {
@@ -76,7 +77,7 @@ impl DownloadService {
     }
 
     pub fn set_parallel_count(&mut self, parallel_count: u16) {
-        *self.parallel_count.blocking_lock() = parallel_count;
+        *self.parallel_count.blocking_write() = parallel_count;
     }
 
     pub fn set_worker_thread_count(&mut self, worker_thread_count: u8) {
@@ -100,8 +101,8 @@ impl DownloadService {
         return false;
     }
 
-    pub fn stop(&mut self) {
-        *self.cancel.blocking_lock() = true;
+    pub fn stop(&self) {
+        self.cancel_token.cancel();
     }
 }
 
@@ -123,28 +124,15 @@ mod test {
         let config = DownloadConfiguration::new()
             .set_url(&url)
             .set_file_path("temp/temp.7z")
-            .set_chunk_download(false)
-            .set_chunk_size(1024 * 1024 * 20)
+            .set_chunk_download(true)
+            .set_chunk_size(1024 * 1024 * 10)
             .set_retry_times_on_failure(2)
-            .set_download_speed_limit(1024 * 1024)
             .build();
         let operation = service.add_downloader(config);
 
 
-        let mut last_downloaded_size = 0u64;
-        let mut last_time = Instant::now();
         while !operation.is_done() {
-            sleep(Duration::from_secs(5));
-            let downloaded_size = operation.downloaded_size();
-            if downloaded_size > last_downloaded_size {
-                let delta = (downloaded_size - last_downloaded_size) as f64;
-                let seconds = Instant::now().duration_since(last_time).as_secs_f64();
-
-                println!("download speed {} per seconds", (delta / seconds) / 1024f64 / 1024f64);
-
-                last_downloaded_size = downloaded_size;
-                last_time = Instant::now();
-            }
+            println!("{}", operation.downloaded_size());
         }
 
         if operation.is_error() {
