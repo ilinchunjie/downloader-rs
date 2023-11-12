@@ -2,8 +2,8 @@ use std::sync::{Arc};
 use reqwest::Client;
 use tokio::sync::Mutex;
 use tokio::sync::watch::Sender;
+use tokio_util::sync::CancellationToken;
 use crate::download_task::{DownloadTask};
-use crate::downloader::DownloadOptions;
 use crate::error::DownloadError;
 use crate::stream::Stream;
 use crate::chunk_range::ChunkRange;
@@ -109,8 +109,8 @@ pub async fn start_download(
     config: Arc<DownloadConfiguration>,
     client: Arc<Client>,
     chunk: Arc<Mutex<Chunk>>,
-    options: Arc<Mutex<DownloadOptions>>,
+    cancel_token: CancellationToken,
 ) -> crate::error::Result<()> {
     let mut task = DownloadTask::new();
-    task.start_download(config, client, options, chunk).await
+    task.start_download(config, client, cancel_token, chunk).await
 }

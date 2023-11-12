@@ -3,6 +3,7 @@ use reqwest::Client;
 use tokio::spawn;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 use crate::download_status::DownloadStatus;
 use crate::chunk_hub::ChunkHub;
 use crate::download_configuration::DownloadConfiguration;
@@ -10,16 +11,12 @@ use crate::download_sender::DownloadSender;
 use crate::remote_file;
 use crate::remote_file::{RemoteFile};
 
-pub struct DownloadOptions {
-    pub cancel: bool,
-}
-
 pub struct Downloader {
     config: Arc<DownloadConfiguration>,
     client: Arc<Client>,
     download_status: Arc<Mutex<DownloadStatus>>,
     chunk_hub: Arc<Mutex<ChunkHub>>,
-    options: Arc<Mutex<DownloadOptions>>,
+    cancel_token: CancellationToken,
     sender: Arc<DownloadSender>,
     thread_handle: Option<JoinHandle<()>>,
 }
@@ -32,9 +29,7 @@ impl Downloader {
             client: client,
             chunk_hub: Arc::new(Mutex::new(ChunkHub::new(config.clone()))),
             download_status: Arc::new(Mutex::new(DownloadStatus::None)),
-            options: Arc::new(Mutex::new(DownloadOptions {
-                cancel: false,
-            })),
+            cancel_token: CancellationToken::new(),
             sender,
             thread_handle: None,
         };
@@ -46,7 +41,7 @@ impl Downloader {
             self.config.clone(),
             self.client.clone(),
             self.chunk_hub.clone(),
-            self.options.clone(),
+            self.cancel_token.clone(),
             self.sender.clone(),
             self.download_status.clone()));
         self.thread_handle = Some(handle);
@@ -69,7 +64,7 @@ impl Downloader {
     }
 
     pub fn stop(&mut self) {
-        self.options.blocking_lock().cancel = true;
+        self.cancel_token.cancel();
         *self.download_status.blocking_lock() = DownloadStatus::Stop;
         self.sender.status_sender.send((DownloadStatus::Stop).into()).unwrap();
     }
@@ -84,10 +79,11 @@ async fn async_start_download(
     config: Arc<DownloadConfiguration>,
     client: Arc<Client>,
     chunk_hub: Arc<Mutex<ChunkHub>>,
-    options: Arc<Mutex<DownloadOptions>>,
+    cancel_token: CancellationToken,
     sender: Arc<DownloadSender>,
     status: Arc<Mutex<DownloadStatus>>) {
-    if options.lock().await.cancel {
+
+    if cancel_token.is_cancelled() {
         return;
     }
 
@@ -105,7 +101,7 @@ async fn async_start_download(
         }
     }
 
-    if options.lock().await.cancel {
+    if cancel_token.is_cancelled() {
         return;
     }
 
@@ -124,7 +120,7 @@ async fn async_start_download(
             return;
         }
         let receivers = receivers.unwrap();
-        let handles = chunk_hub.lock().await.start_download(client.clone(), options.clone());
+        let handles = chunk_hub.lock().await.start_download(client.clone(), cancel_token.clone());
         let cancel = Arc::new(Mutex::new(false));
 
         {
@@ -177,7 +173,7 @@ async fn async_start_download(
 
         *cancel.lock().await = true;
 
-        if options.lock().await.cancel {
+        if cancel_token.is_cancelled() {
             return;
         }
 
@@ -194,6 +190,10 @@ async fn async_start_download(
         }
     }
 
+    if cancel_token.is_cancelled() {
+        return;
+    }
+
     {
         change_download_status(&status, &sender, DownloadStatus::FileVerify).await;
         if let Err(e) = chunk_hub.lock().await.calculate_file_hash().await {
@@ -201,10 +201,6 @@ async fn async_start_download(
             change_download_status(&status, &sender, DownloadStatus::Failed).await;
             return;
         }
-    }
-
-    if options.lock().await.cancel {
-        return;
     }
 
     {

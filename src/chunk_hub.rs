@@ -6,12 +6,12 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::sync::watch::{Receiver, channel};
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 #[allow(unused_imports)]
 use crate::{chunk, chunk_metadata, file_verify};
 use crate::chunk::{Chunk};
 use crate::chunk_range::ChunkRange;
 use crate::download_configuration::DownloadConfiguration;
-use crate::downloader::DownloadOptions;
 use crate::error::DownloadError;
 use crate::file_verify::FileVerify;
 use crate::remote_file::RemoteFile;
@@ -34,7 +34,7 @@ impl ChunkHub {
     pub fn start_download(
         &mut self,
         client: Arc<Client>,
-        options: Arc<Mutex<DownloadOptions>>,
+        cancel_token: CancellationToken,
     ) -> Vec<JoinHandle<crate::error::Result<()>>> {
         let mut handles: Vec<JoinHandle<crate::error::Result<()>>> = Vec::with_capacity(self.chunk_length);
         for chunk in &self.chunks {
@@ -42,7 +42,7 @@ impl ChunkHub {
                 self.config.clone(),
                 client.clone(),
                 chunk.clone(),
-                options.clone(),
+                cancel_token.clone(),
             ));
             handles.push(handle);
         }
@@ -194,11 +194,11 @@ async fn start_download_chunks(
     config: Arc<DownloadConfiguration>,
     client: Arc<Client>,
     chunk: Arc<Mutex<Chunk>>,
-    options: Arc<Mutex<DownloadOptions>>,
+    cancel_token: CancellationToken,
 ) -> crate::error::Result<()> {
     if chunk.lock().await.valid {
         return Ok(());
     }
-    chunk::start_download(config, client, chunk, options).await?;
+    chunk::start_download(config, client, chunk, cancel_token).await?;
     Ok(())
 }

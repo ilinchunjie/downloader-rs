@@ -5,9 +5,9 @@ use reqwest::Client;
 use reqwest::header::RANGE;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
 use crate::chunk::{Chunk};
 use crate::download_configuration::DownloadConfiguration;
-use crate::downloader::DownloadOptions;
 use crate::error::DownloadError;
 
 pub struct DownloadTask {}
@@ -21,7 +21,7 @@ impl DownloadTask {
         &mut self,
         config: Arc<DownloadConfiguration>,
         client: Arc<Client>,
-        options: Arc<Mutex<DownloadOptions>>,
+        cancel_token: CancellationToken,
         download_chunk: Arc<Mutex<Chunk>>,
     ) -> crate::error::Result<()> {
         let retry_count_limit = config.retry_times_on_failure;
@@ -43,7 +43,7 @@ impl DownloadTask {
 
             let result = request.send().await;
 
-            if options.lock().await.cancel {
+            if cancel_token.is_cancelled() {
                 return Ok(());
             }
 
@@ -72,7 +72,7 @@ impl DownloadTask {
             download_chunk.lock().await.setup().await?;
             let mut body = response.bytes_stream();
             while let Some(chunk) = body.next().await {
-                if options.lock().await.cancel {
+                if cancel_token.is_cancelled() {
                     return Ok(());
                 }
                 match chunk {

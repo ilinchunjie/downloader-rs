@@ -134,7 +134,7 @@ mod test {
         let mut last_downloaded_size = 0u64;
         let mut last_time = Instant::now();
         while !operation.is_done() {
-            sleep(Duration::from_secs(1));
+            sleep(Duration::from_secs(5));
             let downloaded_size = operation.downloaded_size();
             if downloaded_size > last_downloaded_size {
                 let delta = (downloaded_size - last_downloaded_size) as f64;
