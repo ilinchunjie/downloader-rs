@@ -32,7 +32,7 @@ impl Display for DownloadError {
             DownloadError::FileWrite => { write!(f, "FileWrite") }
             DownloadError::FileFlush => { write!(f, "FileFlush") }
             DownloadError::FileRename(message) => {
-                write!(f, "FileRename {}", message)
+                write!(f, "file rename fail {}", message)
             }
             DownloadError::DeleteFile => { write!(f, "DeleteFile") }
             DownloadError::MemorySeek => { write!(f, "MemorySeek") }
@@ -41,7 +41,7 @@ impl Display for DownloadError {
             DownloadError::Head => { write!(f, "Head") }
             DownloadError::Request => { write!(f, "Request") }
             DownloadError::Response(url, status_code) => {
-                write!(f, "{} 请求失败 {}", url, status_code)
+                write!(f, "{} response fail {}", url, status_code)
             }
             DownloadError::ResponseChunk => { write!(f, "ResponseChunk") }
             DownloadError::OpenOrCreateFile => { write!(f, "OpenOrCreateFile") }

@@ -22,7 +22,7 @@ impl DownloadOperation {
 
     pub fn status(&self) -> DownloadStatus {
         let status = *self.download_receiver.status_receiver.borrow();
-        return DownloadStatus::from(status);
+        return status;
     }
 
     pub fn downloaded_size(&self) -> u64 {

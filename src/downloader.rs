@@ -60,19 +60,19 @@ impl Downloader {
 
     pub fn pending(&mut self) {
         *self.download_status.blocking_write() = DownloadStatus::Pending;
-        self.sender.status_sender.send((DownloadStatus::Pending).into()).unwrap();
+        self.sender.status_sender.send(DownloadStatus::Pending).unwrap();
     }
 
     pub fn stop(&mut self) {
         self.cancel_token.cancel();
         *self.download_status.blocking_write() = DownloadStatus::Stop;
-        self.sender.status_sender.send((DownloadStatus::Stop).into()).unwrap();
+        self.sender.status_sender.send(DownloadStatus::Stop).unwrap();
     }
 }
 
 async fn change_download_status(status: &Arc<RwLock<DownloadStatus>>, sender: &Arc<DownloadSender>, to_status: DownloadStatus) {
     *status.write().await = to_status;
-    sender.status_sender.send(to_status.into()).unwrap();
+    sender.status_sender.send(to_status).unwrap();
 }
 
 async fn async_start_download(

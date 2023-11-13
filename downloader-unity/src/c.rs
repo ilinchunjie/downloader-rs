@@ -1,4 +1,4 @@
-use std::ffi::{c_char, CStr};
+use std::ffi::{c_char, CStr, CString};
 use downloader_rs::download_configuration::DownloadConfiguration;
 use downloader_rs::download_operation::DownloadOperation;
 use downloader_rs::download_service::DownloadService;
@@ -26,7 +26,7 @@ pub extern "C" fn stop_download_service(ptr: *mut DownloadService) {
         return;
     }
     unsafe {
-        let mut download_service = Box::from_raw(ptr);
+        let download_service = Box::from_raw(ptr);
         download_service.stop();
     }
 }
@@ -37,8 +37,8 @@ pub extern "C" fn add_downloader(ptr: *mut DownloadService, config: DownloadConf
     let url = unsafe { CStr::from_ptr(config.url).to_string_lossy().to_string() };
     let path = unsafe { CStr::from_ptr(config.path).to_string_lossy().to_string() };
     let config = DownloadConfiguration::new()
-        .set_url(url)
-        .set_file_path(path)
+        .set_url(&url)
+        .set_file_path(&path)
         .set_chunk_download(config.chunk_download)
         .set_chunk_size(config.chunk_siez)
         .set_remote_version(config.version)
@@ -58,6 +58,29 @@ pub extern "C" fn get_download_status(ptr: *mut DownloadOperation) -> u8 {
 pub extern "C" fn get_download_is_done(ptr: *mut DownloadOperation) -> bool {
     let operation = unsafe { ptr.as_mut().expect("invalid ptr: ") };
     operation.is_done()
+}
+
+#[no_mangle]
+pub extern "C" fn get_download_is_error(ptr: *mut DownloadOperation) -> bool {
+    let operation = unsafe { ptr.as_mut().expect("invalid ptr: ") };
+    operation.is_error()
+}
+
+#[no_mangle]
+pub extern "C" fn get_download_error(ptr: *mut DownloadOperation) -> *mut c_char {
+    let operation = unsafe { ptr.as_mut().expect("invalid ptr: ") };
+    let ptr = CString::new(operation.error().to_string()).unwrap().into_raw();
+    ptr
+}
+
+#[no_mangle]
+pub extern "C" fn free_download_error(ptr: *mut c_char) {
+    if ptr.is_null() {
+        return;
+    }
+    unsafe {
+        let _ = CString::from_raw(ptr);
+    }
 }
 
 #[no_mangle]
