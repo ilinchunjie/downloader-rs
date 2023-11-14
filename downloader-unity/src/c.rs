@@ -14,8 +14,10 @@ pub struct DownloadConfig {
 }
 
 #[no_mangle]
-pub extern "C" fn start_download_service() -> *mut DownloadService {
+pub extern "C" fn start_download_service(thread_count: u16, parallel_count: u16) -> *mut DownloadService {
     let mut download_service = DownloadService::new();
+    download_service.set_worker_thread_count(thread_count as usize);
+    download_service.set_parallel_count(parallel_count as usize);
     download_service.start_service();
     Box::into_raw(Box::new(download_service))
 }

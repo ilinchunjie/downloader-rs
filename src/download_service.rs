@@ -15,7 +15,7 @@ use crate::downloader::{Downloader};
 type DownloaderQueue = VecDeque<Arc<Mutex<Downloader>>>;
 
 pub struct DownloadService {
-    worker_thread_count: u8,
+    worker_thread_count: usize,
     cancel_token: CancellationToken,
     parallel_count: Arc<RwLock<usize>>,
     download_queue: Arc<Mutex<DownloaderQueue>>,
@@ -39,7 +39,7 @@ impl DownloadService {
         let cancel_token = self.cancel_token.clone();
         let queue = self.download_queue.clone();
         let parallel_count = self.parallel_count.clone();
-        let worker_thread_count = self.worker_thread_count as usize;
+        let worker_thread_count = self.worker_thread_count;
         let handle = thread::spawn(move || {
             let rt = runtime::Builder::new_multi_thread()
                 .worker_threads(worker_thread_count)
@@ -93,7 +93,7 @@ impl DownloadService {
         *self.parallel_count.blocking_write() = parallel_count;
     }
 
-    pub fn set_worker_thread_count(&mut self, worker_thread_count: u8) {
+    pub fn set_worker_thread_count(&mut self, worker_thread_count: usize) {
         self.worker_thread_count = worker_thread_count;
     }
 
