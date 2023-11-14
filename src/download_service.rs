@@ -17,7 +17,7 @@ type DownloaderQueue = VecDeque<Arc<Mutex<Downloader>>>;
 pub struct DownloadService {
     worker_thread_count: u8,
     cancel_token: CancellationToken,
-    parallel_count: Arc<RwLock<u16>>,
+    parallel_count: Arc<RwLock<usize>>,
     download_queue: Arc<Mutex<DownloaderQueue>>,
     thread_handle: Option<JoinHandle<()>>,
     client: Arc<Client>,
@@ -69,6 +69,19 @@ impl DownloadService {
                             downloading_count -= 1;
                         }
                     }
+                    if downloadings.len() > *parallel_count.read().await {
+                        let mut remove_count = downloadings.len() - *parallel_count.read().await;
+                        while remove_count > 0 {
+                            let index = downloadings.len() - 1;
+                            let downloader = downloadings.get(index).unwrap();
+                            downloader.lock().await.stop_async().await;
+                            downloader.lock().await.pending_async().await;
+                            queue.lock().await.push_back(downloader.clone());
+                            downloadings.remove(downloadings.len() - 1);
+                            remove_count -= 1;
+                            downloading_count -= 1;
+                        }
+                    }
                 }
             })
         });
@@ -76,7 +89,7 @@ impl DownloadService {
         self.thread_handle = Some(handle);
     }
 
-    pub fn set_parallel_count(&mut self, parallel_count: u16) {
+    pub fn set_parallel_count(&mut self, parallel_count: usize) {
         *self.parallel_count.blocking_write() = parallel_count;
     }
 
@@ -89,7 +102,7 @@ impl DownloadService {
         let mut downloader = Downloader::new(config, self.client.clone(), Arc::new(tx));
         downloader.pending();
         let downloader = Arc::new(Mutex::new(downloader));
-        self.download_queue.blocking_lock().push_front(downloader.clone());
+        self.download_queue.blocking_lock().push_back(downloader.clone());
         let operation = DownloadOperation::new(downloader.clone(), rx);
         return operation;
     }
