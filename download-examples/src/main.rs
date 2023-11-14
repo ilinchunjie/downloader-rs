@@ -19,16 +19,17 @@ pub fn main() {
     let mut download_service = DownloadService::new();
     download_service.start_service();
 
-    let url = "https://gh.con.sh/https://github.com/AaronFeng753/Waifu2x-Extension-GUI/releases/download/v2.21.12/Waifu2x-Extension-GUI-v2.21.12-Portable.7z".to_string();
+    let url = "https://gh.con.sh/https://github.com/AaronFeng753/Waifu2x-Extension-GUI/releases/download/v2.21.12/Waifu2x-Extension-GUI-v2.21.12-Portable.7z";
     let config = DownloadConfiguration::new()
         .set_url(url)
-        .set_file_path("temp/temp.7z".to_string())
+        .set_file_path("temp/temp.7z")
         .set_chunk_download(true)
-        .set_chunk_size(1024 * 1024 * 20)
+        .set_chunk_size(1024 * 1024 * 5)
         .build();
     let operation = download_service.add_downloader(config);
 
     while !operation.is_done() {
+        println!("{}", operation.downloaded_size());
     }
 
     drop(operation);
