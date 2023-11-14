@@ -21,7 +21,7 @@ impl DownloadOperation {
     }
 
     pub fn status(&self) -> DownloadStatus {
-        let status = *self.download_receiver.status_receiver.borrow();
+        let status = self.downloader.blocking_lock().status();
         return status;
     }
 

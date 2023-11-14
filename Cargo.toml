@@ -23,6 +23,7 @@ reqwest = { version = "0.11.20", features = ["stream"] }
 futures = { version = "0.3.29", features = ["async-await"] }
 chrono = { version = "0.4.31" }
 async-trait = { version = "0.1.74" }
+parking_lot = { version = "0.12.1" }
 
 # optional dependencies
 

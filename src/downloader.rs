@@ -1,8 +1,10 @@
+use std::future::Future;
 use std::sync::{Arc};
 use reqwest::Client;
+use parking_lot::RwLock;
 use tokio::spawn;
-use tokio::sync::{Mutex, RwLock};
-use tokio::task::JoinHandle;
+use tokio::sync::{Mutex};
+use tokio::sync::watch::Receiver;
 use tokio_util::sync::CancellationToken;
 use crate::download_status::DownloadStatus;
 use crate::chunk_hub::ChunkHub;
@@ -18,7 +20,7 @@ pub struct Downloader {
     chunk_hub: Arc<Mutex<ChunkHub>>,
     cancel_token: CancellationToken,
     sender: Arc<DownloadSender>,
-    thread_handle: Option<JoinHandle<()>>,
+    is_done_receiver: Option<Receiver<bool>>,
 }
 
 impl Downloader {
@@ -31,59 +33,64 @@ impl Downloader {
             download_status: Arc::new(RwLock::new(DownloadStatus::None)),
             cancel_token: CancellationToken::new(),
             sender,
-            thread_handle: None,
+            is_done_receiver: None,
         };
         downloader
     }
 
-    pub fn start_download(&mut self) {
-        let handle = spawn(async_start_download(
-            self.config.clone(),
-            self.client.clone(),
-            self.chunk_hub.clone(),
-            self.cancel_token.clone(),
-            self.sender.clone(),
-            self.download_status.clone()));
-        self.thread_handle = Some(handle);
+    pub fn start_download(&mut self) -> impl Future<Output=()> {
+        let config = self.config.clone();
+        let client = self.client.clone();
+        let chunk_hub = self.chunk_hub.clone();
+        let cancel_token = self.cancel_token.clone();
+        let sender = self.sender.clone();
+        let download_status = self.download_status.clone();
+        let (is_done_sender, is_done_receiver) = tokio::sync::watch::channel(false);
+        self.is_done_receiver = Some(is_done_receiver);
+        async move {
+            async_start_download(
+                config,
+                client,
+                chunk_hub,
+                cancel_token,
+                sender,
+                download_status).await;
+            let _ = is_done_sender.send(true);
+        }
     }
 
     pub fn is_done(&self) -> bool {
-        if let Some(handle) = &self.thread_handle {
-            return handle.is_finished();
+        if let Some(receiver) = &self.is_done_receiver {
+            return *receiver.borrow();
         }
         return false;
     }
 
+    pub fn status(&self) -> DownloadStatus {
+        *self.download_status.read()
+    }
+
     pub async fn is_pending_async(&self) -> bool {
-        return *self.download_status.read().await == DownloadStatus::Pending;
+        return *self.download_status.read() == DownloadStatus::Pending;
     }
 
     pub fn pending(&mut self) {
-        *self.download_status.blocking_write() = DownloadStatus::Pending;
-        self.sender.status_sender.send(DownloadStatus::Pending).unwrap();
+        *self.download_status.write() = DownloadStatus::Pending;
     }
 
     pub async fn pending_async(&mut self) {
-        *self.download_status.write().await = DownloadStatus::Pending;
-        self.sender.status_sender.send(DownloadStatus::Pending).unwrap();
+        *self.download_status.write() = DownloadStatus::Pending;
     }
 
     pub fn stop(&mut self) {
         self.cancel_token.cancel();
-        *self.download_status.blocking_write() = DownloadStatus::Stop;
-        self.sender.status_sender.send(DownloadStatus::Stop).unwrap();
+        *self.download_status.write() = DownloadStatus::Stop;
     }
 
     pub async fn stop_async(&mut self) {
         self.cancel_token.cancel();
-        *self.download_status.write().await = DownloadStatus::Stop;
-        self.sender.status_sender.send(DownloadStatus::Stop).unwrap();
+        *self.download_status.write() = DownloadStatus::Stop;
     }
-}
-
-async fn change_download_status(status: &Arc<RwLock<DownloadStatus>>, sender: &Arc<DownloadSender>, to_status: DownloadStatus) {
-    *status.write().await = to_status;
-    sender.status_sender.send(to_status).unwrap();
 }
 
 async fn async_start_download(
@@ -93,12 +100,11 @@ async fn async_start_download(
     cancel_token: CancellationToken,
     sender: Arc<DownloadSender>,
     status: Arc<RwLock<DownloadStatus>>) {
-
     if cancel_token.is_cancelled() {
         return;
     }
 
-    change_download_status(&status, &sender, DownloadStatus::Head).await;
+    *status.write() = DownloadStatus::Head;
 
     let remote_file: Option<RemoteFile>;
     match remote_file::head(&client, config).await {
@@ -106,8 +112,8 @@ async fn async_start_download(
             remote_file = Some(value);
         }
         Err(e) => {
-            change_download_status(&status, &sender, DownloadStatus::Failed).await;
             sender.error_sender.send(e).unwrap();
+            *status.write() = DownloadStatus::Failed;
             return;
         }
     }
@@ -116,7 +122,7 @@ async fn async_start_download(
         return;
     }
 
-    change_download_status(&status, &sender, DownloadStatus::Download).await;
+    *status.write() = DownloadStatus::Download;
 
     {
         let remote_file = remote_file.unwrap();
@@ -127,7 +133,7 @@ async fn async_start_download(
 
         if let Err(e) = receivers {
             sender.error_sender.send(e).unwrap();
-            change_download_status(&status, &sender, DownloadStatus::Failed).await;
+            *status.write() = DownloadStatus::Failed;
             return;
         }
         let receivers = receivers.unwrap();
@@ -170,13 +176,13 @@ async fn async_start_download(
                     if let Err(e) = result {
                         *cancel.lock().await = true;
                         sender.error_sender.send(e).unwrap();
-                        change_download_status(&status, &sender, DownloadStatus::Failed).await;
+                        *status.write() = DownloadStatus::Failed;
                         return;
                     }
                 }
                 Err(_) => {
                     *cancel.lock().await = true;
-                    change_download_status(&status, &sender, DownloadStatus::Failed).await;
+                    *status.write() = DownloadStatus::Failed;
                     return;
                 }
             }
@@ -192,29 +198,23 @@ async fn async_start_download(
         let _ = sender.downloaded_size_sender.send(downloaded_size);
     }
 
-    {
-        change_download_status(&status, &sender, DownloadStatus::DownloadPost).await;
-        if let Err(e) = chunk_hub.lock().await.on_download_post().await {
-            sender.error_sender.send(e).unwrap();
-            change_download_status(&status, &sender, DownloadStatus::Failed).await;
-            return;
-        }
+    *status.write() = DownloadStatus::DownloadPost;
+    if let Err(e) = chunk_hub.lock().await.on_download_post().await {
+        sender.error_sender.send(e).unwrap();
+        *status.write() = DownloadStatus::Failed;
+        return;
     }
 
     if cancel_token.is_cancelled() {
         return;
     }
 
-    {
-        change_download_status(&status, &sender, DownloadStatus::FileVerify).await;
-        if let Err(e) = chunk_hub.lock().await.calculate_file_hash().await {
-            sender.error_sender.send(e).unwrap();
-            change_download_status(&status, &sender, DownloadStatus::Failed).await;
-            return;
-        }
+    *status.write() = DownloadStatus::FileVerify;
+    if let Err(e) = chunk_hub.lock().await.calculate_file_hash().await {
+        sender.error_sender.send(e).unwrap();
+        *status.write() = DownloadStatus::Failed;
+        return;
     }
 
-    {
-        change_download_status(&status, &sender, DownloadStatus::Complete).await;
-    }
+    *status.write() = DownloadStatus::Complete;
 }
