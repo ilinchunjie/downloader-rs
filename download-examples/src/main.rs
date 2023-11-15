@@ -18,8 +18,9 @@ mod test {
     fn test_download_example() {
         let profiler = dhat::Profiler::new_heap();
 
-        let mut download_service = DownloadService::new();
-        download_service.set_worker_thread_count(4);
+        let mut download_service = DownloadService::new()
+            .set_worker_thread_count(4)
+            .set_multi_thread(true);
         download_service.set_parallel_count(1);
         download_service.start_service();
 
