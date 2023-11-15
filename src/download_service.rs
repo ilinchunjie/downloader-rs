@@ -82,6 +82,8 @@ impl DownloadService {
                             downloading_count -= 1;
                         }
                     }
+
+                    sleep(Duration::from_secs(1)).await;
                 }
             })
         });
