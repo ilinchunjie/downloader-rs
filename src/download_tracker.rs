@@ -1,7 +1,6 @@
 use tokio::sync::watch::{channel};
 use crate::download_receiver::DownloadReceiver;
 use crate::download_sender::DownloadSender;
-use crate::download_status::DownloadStatus;
 use crate::error::DownloadError;
 
 pub fn new() -> (DownloadSender, DownloadReceiver) {

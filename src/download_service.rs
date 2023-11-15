@@ -2,9 +2,11 @@ use std::collections::{VecDeque};
 use std::sync::{Arc};
 use std::thread;
 use std::thread::JoinHandle;
+use std::time::Duration;
 use reqwest::Client;
 use tokio::runtime;
 use tokio::sync::{Mutex, RwLock};
+use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_operation::DownloadOperation;
@@ -15,6 +17,7 @@ use crate::downloader::{Downloader};
 type DownloaderQueue = VecDeque<Arc<Mutex<Downloader>>>;
 
 pub struct DownloadService {
+    multi_thread: bool,
     worker_thread_count: usize,
     cancel_token: CancellationToken,
     parallel_count: Arc<RwLock<usize>>,
@@ -26,6 +29,7 @@ pub struct DownloadService {
 impl DownloadService {
     pub fn new() -> Self {
         Self {
+            multi_thread: false,
             worker_thread_count: 4,
             download_queue: Arc::new(Mutex::new(DownloaderQueue::new())),
             parallel_count: Arc::new(RwLock::new(32)),
@@ -40,12 +44,23 @@ impl DownloadService {
         let queue = self.download_queue.clone();
         let parallel_count = self.parallel_count.clone();
         let worker_thread_count = self.worker_thread_count;
+        let multi_thread = self.multi_thread;
         let handle = thread::spawn(move || {
-            let rt = runtime::Builder::new_multi_thread()
-                .worker_threads(worker_thread_count)
-                .enable_all()
-                .build()
-                .expect("runtime build failed");
+            let rt = match multi_thread {
+                true => {
+                    runtime::Builder::new_multi_thread()
+                        .worker_threads(worker_thread_count)
+                        .enable_all()
+                        .build()
+                        .expect("runtime build failed")
+                }
+                false => {
+                    runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("runtime build failed")
+                }
+            };
 
             rt.block_on(async {
                 let mut downloading_count = 0;
@@ -83,7 +98,7 @@ impl DownloadService {
                         }
                     }
 
-                    sleep(Duration::from_secs(1)).await;
+                    sleep(Duration::from_secs(2)).await;
                 }
             })
         });
@@ -91,12 +106,18 @@ impl DownloadService {
         self.thread_handle = Some(handle);
     }
 
-    pub fn set_parallel_count(&mut self, parallel_count: usize) {
-        *self.parallel_count.blocking_write() = parallel_count;
+    pub fn set_multi_thread(mut self, multi_thread: bool) -> DownloadService {
+        self.multi_thread = multi_thread;
+        self
     }
 
-    pub fn set_worker_thread_count(&mut self, worker_thread_count: usize) {
+    pub fn set_worker_thread_count(mut self, worker_thread_count: usize) -> DownloadService {
         self.worker_thread_count = worker_thread_count;
+        self
+    }
+
+    pub fn set_parallel_count(&mut self, parallel_count: usize) {
+        *self.parallel_count.blocking_write() = parallel_count;
     }
 
     pub fn add_downloader(&mut self, config: DownloadConfiguration) -> DownloadOperation {

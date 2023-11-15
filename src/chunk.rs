@@ -57,7 +57,7 @@ impl Chunk {
             stream.write_async(buffer).await?;
             self.chunk_range.position += buffer.len() as u64;
             if let Some(sender) = &self.downloaded_size_sender {
-                sender.send(self.chunk_range.length()).unwrap();
+                let _ = sender.send(self.chunk_range.length());
             }
         }
         Ok(())

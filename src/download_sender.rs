@@ -1,5 +1,4 @@
 use tokio::sync::watch::Sender;
-use crate::download_status::DownloadStatus;
 use crate::error::DownloadError;
 
 pub struct DownloadSender {
