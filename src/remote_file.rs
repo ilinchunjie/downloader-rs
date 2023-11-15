@@ -42,7 +42,7 @@ impl RemoteFile {
     }
 }
 
-pub async fn head(client: &Arc<Client>, config: Arc<DownloadConfiguration>) -> crate::error::Result<RemoteFile> {
+pub async fn head(client: &Arc<Client>, config: &Arc<DownloadConfiguration>) -> crate::error::Result<RemoteFile> {
     let retry_count_limit = config.retry_times_on_failure;
     let mut retry_count = 0;
 

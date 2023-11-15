@@ -1,22 +1,23 @@
+use std::ops::Deref;
 use std::sync::{Arc};
+use std::time::Duration;
 use reqwest::Client;
 use parking_lot::RwLock;
 use tokio::spawn;
-use tokio::sync::{Mutex};
+use tokio::sync::watch::{Receiver};
 use tokio::task::JoinHandle;
+use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use crate::download_status::DownloadStatus;
-use crate::chunk_hub::ChunkHub;
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_sender::DownloadSender;
-use crate::remote_file;
+use crate::{chunk, chunk_hub, remote_file};
 use crate::remote_file::{RemoteFile};
 
 pub struct Downloader {
     config: Arc<DownloadConfiguration>,
     client: Arc<Client>,
     download_status: Arc<RwLock<DownloadStatus>>,
-    chunk_hub: Arc<Mutex<ChunkHub>>,
     cancel_token: CancellationToken,
     sender: Arc<DownloadSender>,
     thread_handle: Option<JoinHandle<()>>,
@@ -27,8 +28,7 @@ impl Downloader {
         let config = Arc::new(config);
         let downloader = Downloader {
             config: config.clone(),
-            client: client,
-            chunk_hub: Arc::new(Mutex::new(ChunkHub::new(config.clone()))),
+            client,
             download_status: Arc::new(RwLock::new(DownloadStatus::None)),
             cancel_token: CancellationToken::new(),
             sender,
@@ -41,7 +41,6 @@ impl Downloader {
         let handle = spawn(async_start_download(
             self.config.clone(),
             self.client.clone(),
-            self.chunk_hub.clone(),
             self.cancel_token.clone(),
             self.sender.clone(),
             self.download_status.clone()));
@@ -85,7 +84,6 @@ impl Downloader {
 async fn async_start_download(
     config: Arc<DownloadConfiguration>,
     client: Arc<Client>,
-    chunk_hub: Arc<Mutex<ChunkHub>>,
     cancel_token: CancellationToken,
     sender: Arc<DownloadSender>,
     status: Arc<RwLock<DownloadStatus>>) {
@@ -96,7 +94,7 @@ async fn async_start_download(
     *status.write() = DownloadStatus::Head;
 
     let remote_file: Option<RemoteFile>;
-    match remote_file::head(&client, config).await {
+    match remote_file::head(&client, &config).await {
         Ok(value) => {
             remote_file = Some(value);
         }
@@ -113,82 +111,87 @@ async fn async_start_download(
 
     *status.write() = DownloadStatus::Download;
 
-    {
-        let remote_file = remote_file.unwrap();
+    let remote_file = remote_file.unwrap();
 
-        let _ = sender.download_total_size_sender.send(remote_file.total_length);
+    let _ = sender.download_total_size_sender.send(remote_file.total_length);
 
-        let receivers = chunk_hub.lock().await.validate(remote_file).await;
+    let result = chunk_hub::validate(&config, remote_file).await;
 
-        if let Err(e) = receivers {
-            sender.error_sender.send(e).unwrap();
-            *status.write() = DownloadStatus::Failed;
-            return;
+    if let Err(e) = result {
+        sender.error_sender.send(e).unwrap();
+        *status.write() = DownloadStatus::Failed;
+        return;
+    }
+
+    let (chunks, receivers) = result.unwrap();
+    let mut handles = Vec::with_capacity(chunks.len());
+    let chunk_length = chunks.len();
+    for chunk in chunks {
+        if chunk.valid {
+            continue;
         }
-        let receivers = receivers.unwrap();
-        let handles = chunk_hub.lock().await.start_download(client.clone(), cancel_token.clone());
-        let cancel = Arc::new(Mutex::new(false));
+        let handle = spawn(
+            chunk::start_download(
+                config.clone(),
+                client.clone(),
+                chunk,
+                cancel_token.clone())
+        );
+        handles.push(handle);
+    }
 
-        {
-            let chunk_hub = chunk_hub.clone();
-            let sender = sender.clone();
-            let cancel = cancel.clone();
-            spawn(async move {
-                'r: loop {
-                    let mut downloaded_size_changed = false;
-                    for receiver in &receivers {
-                        if let Ok(changed) = receiver.has_changed() {
-                            if changed {
-                                downloaded_size_changed = true;
-                                break;
-                            }
-                        }
-                    }
-                    if downloaded_size_changed {
-                        let downloaded_size = chunk_hub.lock().await.get_downloaded_size().await;
-                        if *cancel.lock().await {
-                            break 'r;
-                        }
-                        let _ = sender.downloaded_size_sender.send(downloaded_size);
-                    }
-
-                    if *cancel.lock().await {
-                        break 'r;
-                    }
-                }
-            });
+    fn sync_downloaded_size(receivers: &Arc<Vec<Receiver<u64>>>, sender: &DownloadSender) {
+        let mut downloaded_size = 0u64;
+        for receiver in receivers.deref() {
+            downloaded_size += *receiver.borrow();
         }
+        let _ = sender.downloaded_size_sender.send(downloaded_size);
+    }
 
-        for handle in handles {
-            match handle.await {
-                Ok(result) => {
-                    if let Err(e) = result {
-                        *cancel.lock().await = true;
-                        sender.error_sender.send(e).unwrap();
-                        *status.write() = DownloadStatus::Failed;
-                        return;
-                    }
-                }
-                Err(_) => {
-                    *cancel.lock().await = true;
+    let receivers = Arc::new(receivers);
+
+    sync_downloaded_size(&receivers, &sender);
+
+    let downloaded_size_handle = {
+        let sender = sender.clone();
+        let receivers = receivers.clone();
+        let handle = spawn(async move {
+            loop {
+                sync_downloaded_size(&receivers, &sender);
+                sleep(Duration::from_millis(500)).await;
+            }
+        });
+        handle
+    };
+
+    for handle in handles {
+        match handle.await {
+            Ok(result) => {
+                if let Err(e) = result {
+                    downloaded_size_handle.abort();
+                    sender.error_sender.send(e).unwrap();
                     *status.write() = DownloadStatus::Failed;
                     return;
                 }
             }
+            Err(_) => {
+                downloaded_size_handle.abort();
+                *status.write() = DownloadStatus::Failed;
+                return;
+            }
         }
-
-        *cancel.lock().await = true;
-
-        if cancel_token.is_cancelled() {
-            return;
-        }
-
-        let downloaded_size = chunk_hub.lock().await.get_downloaded_size().await;
-        let _ = sender.downloaded_size_sender.send(downloaded_size);
     }
 
+    downloaded_size_handle.abort();
+
+    if cancel_token.is_cancelled() {
+        return;
+    }
+
+    sync_downloaded_size(&receivers, &sender);
+
     *status.write() = DownloadStatus::DownloadPost;
-    if let Err(e) = chunk_hub.lock().await.on_download_post().await {
+    if let Err(e) = chunk_hub::on_download_post(&config, chunk_length).await {
         sender.error_sender.send(e).unwrap();
         *status.write() = DownloadStatus::Failed;
         return;
@@ -199,7 +202,7 @@ async fn async_start_download(
     }
 
     *status.write() = DownloadStatus::FileVerify;
-    if let Err(e) = chunk_hub.lock().await.calculate_file_hash().await {
+    if let Err(e) = chunk_hub::calculate_file_hash(&config).await {
         sender.error_sender.send(e).unwrap();
         *status.write() = DownloadStatus::Failed;
         return;

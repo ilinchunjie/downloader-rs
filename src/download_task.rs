@@ -3,7 +3,6 @@ use std::time::Duration;
 use futures::StreamExt;
 use reqwest::Client;
 use reqwest::header::RANGE;
-use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use crate::chunk::{Chunk};
@@ -22,7 +21,7 @@ impl DownloadTask {
         config: Arc<DownloadConfiguration>,
         client: Arc<Client>,
         cancel_token: CancellationToken,
-        download_chunk: Arc<Mutex<Chunk>>,
+        download_chunk: &mut Chunk,
     ) -> crate::error::Result<()> {
         let retry_count_limit = config.retry_times_on_failure;
         let mut retry_count = 0;
@@ -30,10 +29,9 @@ impl DownloadTask {
         'r: loop {
             let mut range_str = String::new();
             {
-                let range_download = download_chunk.lock().await.range_download;
+                let range_download = download_chunk.range_download;
                 if range_download {
-                    let chunk = download_chunk.lock().await;
-                    range_str = format!("bytes={}-{}", chunk.chunk_range.position, chunk.chunk_range.end);
+                    range_str = format!("bytes={}-{}", download_chunk.chunk_range.position, download_chunk.chunk_range.end);
                 }
             }
 
@@ -69,7 +67,7 @@ impl DownloadTask {
                 }
             }
 
-            download_chunk.lock().await.setup().await?;
+            download_chunk.setup().await?;
             let mut body = response.bytes_stream();
             while let Some(chunk) = body.next().await {
                 if cancel_token.is_cancelled() {
@@ -77,7 +75,7 @@ impl DownloadTask {
                 }
                 match chunk {
                     Ok(bytes) => {
-                        download_chunk.lock().await.received_bytes_async(&bytes).await?;
+                        download_chunk.received_bytes_async(&bytes).await?;
                         if config.receive_bytes_per_second > 0 {
                             let delay_duration = Duration::from_secs_f64(bytes.len() as f64 / config.receive_bytes_per_second as f64);
                             sleep(delay_duration).await;
@@ -85,7 +83,7 @@ impl DownloadTask {
                     }
                     Err(_e) => {
                         if retry_count >= retry_count_limit {
-                            download_chunk.lock().await.flush_async().await?;
+                            download_chunk.flush_async().await?;
                             return Err(DownloadError::ResponseChunk);
                         } else {
                             retry_count += 1;

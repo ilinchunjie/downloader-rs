@@ -1,6 +1,5 @@
 use std::sync::{Arc};
 use reqwest::Client;
-use tokio::sync::Mutex;
 use tokio::sync::watch::Sender;
 use tokio_util::sync::CancellationToken;
 use crate::download_task::{DownloadTask};
@@ -32,14 +31,17 @@ impl Default for Chunk {
 }
 
 impl Chunk {
-    pub fn new(file_path: String, chunk_range: ChunkRange, range_download: bool, downloaded_size_sender: Sender<u64>) -> Self {
+    pub fn new(file_path: String, chunk_range: ChunkRange, range_download: bool) -> Self {
         Self {
             file_path,
             chunk_range,
             range_download,
-            downloaded_size_sender: Some(downloaded_size_sender),
             ..Default::default()
         }
+    }
+
+    pub fn set_downloaded_size_sender(&mut self, sender: Sender<u64>) {
+        self.downloaded_size_sender = Some(sender);
     }
 
     pub fn get_downloaded_size(&self) -> u64 {
@@ -108,9 +110,9 @@ impl Chunk {
 pub async fn start_download(
     config: Arc<DownloadConfiguration>,
     client: Arc<Client>,
-    chunk: Arc<Mutex<Chunk>>,
+    mut chunk: Chunk,
     cancel_token: CancellationToken,
 ) -> crate::error::Result<()> {
     let mut task = DownloadTask::new();
-    task.start_download(config, client, cancel_token, chunk).await
+    task.start_download(config, client, cancel_token, &mut chunk).await
 }
