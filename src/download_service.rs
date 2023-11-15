@@ -66,7 +66,7 @@ impl DownloadService {
                 let mut downloading_count = 0;
                 let mut downloadings = Vec::new();
                 while !cancel_token.is_cancelled() {
-                    if downloading_count < *parallel_count.read().await {
+                    while downloading_count < *parallel_count.read().await && queue.lock().await.len() > 0 {
                         if let Some(downloader) = queue.lock().await.pop_front() {
                             let downloader_clone = downloader.clone();
                             if !downloader.lock().await.is_pending_async().await {
@@ -97,8 +97,6 @@ impl DownloadService {
                             downloading_count -= 1;
                         }
                     }
-
-                    sleep(Duration::from_secs(2)).await;
                 }
             })
         });
