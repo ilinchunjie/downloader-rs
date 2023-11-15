@@ -24,7 +24,6 @@ a simple file downloader for rust
 
 # Support Features
 - [x] multithreading/chunk/resumable download
-- [x] download in memory
 - [x] thread count limit
 - [x] md5/xxHash file verification
 - [x] download speed limit
