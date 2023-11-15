@@ -11,7 +11,8 @@ use tokio_util::sync::CancellationToken;
 use crate::download_status::DownloadStatus;
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_sender::DownloadSender;
-use crate::{chunk, chunk_hub, remote_file};
+use crate::{chunk, chunk_hub, file_verify, remote_file};
+use crate::file_verify::FileVerify;
 use crate::remote_file::{RemoteFile};
 
 pub struct Downloader {
@@ -201,11 +202,12 @@ async fn async_start_download(
         return;
     }
 
-    *status.write() = DownloadStatus::FileVerify;
-    if let Err(e) = chunk_hub::calculate_file_hash(&config).await {
-        sender.error_sender.send(e).unwrap();
-        *status.write() = DownloadStatus::Failed;
-        return;
+    if config.file_verify != FileVerify::None {
+        *status.write() = DownloadStatus::FileVerify;
+        if let Err(e) = file_verify::file_validate(&config.file_verify, config.get_file_path()).await {
+            sender.error_sender.send(e).unwrap();
+            *status.write() = DownloadStatus::Failed;
+        }
     }
 
     *status.write() = DownloadStatus::Complete;

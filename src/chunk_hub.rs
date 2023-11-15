@@ -9,41 +9,7 @@ use crate::chunk::{Chunk};
 use crate::chunk_range::ChunkRange;
 use crate::download_configuration::DownloadConfiguration;
 use crate::error::DownloadError;
-use crate::file_verify::FileVerify;
 use crate::remote_file::RemoteFile;
-
-pub async fn calculate_file_hash(config: &Arc<DownloadConfiguration>) -> crate::error::Result<()> {
-    if config.file_verify == FileVerify::None {
-        return Ok(());
-    }
-
-    match &config.file_verify {
-        FileVerify::None => {
-            return Ok(());
-        }
-        #[cfg(feature = "xxhash-rust")]
-        FileVerify::xxHash(value) => {
-            {
-                let hash = file_verify::calculate_file_xxhash(config.get_file_path(), 0).await?;
-                if !hash.eq(&value) {
-                    return Err(DownloadError::FileVerify);
-                }
-            }
-        }
-        #[cfg(feature = "md5")]
-        FileVerify::MD5(value) => {
-            {
-                let hash = file_verify::calculate_file_md5(config.get_file_path()).await?;
-                if !hash.eq(value) {
-                    return Err(DownloadError::FileVerify);
-                }
-            }
-        }
-    }
-
-    #[allow(unreachable_code)]
-    Ok(())
-}
 
 pub async fn on_download_post(config: &Arc<DownloadConfiguration>, chunk_length: usize) -> crate::error::Result<()> {
     match chunk_length {

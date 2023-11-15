@@ -1,3 +1,4 @@
+use std::path::Path;
 #[cfg(feature = "xxhash-rust")]
 use xxhash_rust::xxh64;
 #[cfg(feature = "md5")]
@@ -19,8 +20,8 @@ pub enum FileVerify {
 }
 
 #[cfg(feature = "xxhash-rust")]
-pub async fn calculate_file_xxhash(file_path: &str, seed: u64) -> crate::error::Result<u64> {
-    match tokio::fs::File::open(file_path).await {
+async fn calculate_file_xxhash(file_path: impl AsRef<Path>, seed: u64) -> crate::error::Result<u64> {
+    match tokio::fs::File::open(file_path.as_ref()).await {
         Ok(file) => {
             let mut reader = BufReader::new(file);
             let mut hasher = xxh64::Xxh64::new(seed);
@@ -44,8 +45,8 @@ pub async fn calculate_file_xxhash(file_path: &str, seed: u64) -> crate::error::
 }
 
 #[cfg(feature = "md5")]
-pub async fn calculate_file_md5(file_path: &str) -> crate::error::Result<String> {
-    match tokio::fs::File::open(file_path).await {
+async fn calculate_file_md5(file_path: impl AsRef<Path>) -> crate::error::Result<String> {
+    match tokio::fs::File::open(file_path.as_ref()).await {
         Ok(file) => {
             let mut reader = BufReader::new(file);
             let mut context = Context::new();
@@ -66,4 +67,38 @@ pub async fn calculate_file_md5(file_path: &str) -> crate::error::Result<String>
             return Err(DownloadError::FileOpen);
         }
     }
+}
+
+#[allow(unused_variables)]
+pub async fn file_validate(file_verify: &FileVerify, file_path: impl AsRef<Path>) -> crate::error::Result<()> {
+    if *file_verify == FileVerify::None {
+        return Ok(());
+    }
+
+    match file_verify {
+        FileVerify::None => {
+            return Ok(());
+        }
+        #[cfg(feature = "xxhash-rust")]
+        FileVerify::xxHash(value) => {
+            {
+                let hash = calculate_file_xxhash(file_path, 0).await?;
+                if !hash.eq(&value) {
+                    return Err(DownloadError::FileVerify);
+                }
+            }
+        }
+        #[cfg(feature = "md5")]
+        FileVerify::MD5(value) => {
+            {
+                let hash = calculate_file_md5(file_path).await?;
+                if !hash.eq(value) {
+                    return Err(DownloadError::FileVerify);
+                }
+            }
+        }
+    }
+
+    #[allow(unreachable_code)]
+    Ok(())
 }
