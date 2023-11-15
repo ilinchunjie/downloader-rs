@@ -48,19 +48,39 @@ impl DownloadService {
                 .expect("runtime build failed");
 
             rt.block_on(async {
+                let mut downloading_count = 0;
+                let mut downloadings = Vec::new();
                 while !cancel_token.is_cancelled() {
-                    let mut futures = Vec::with_capacity(*parallel_count.read().await);
-                    while futures.len() < *parallel_count.read().await && queue.lock().await.len() > 0 {
+                    if downloading_count < *parallel_count.read().await {
                         if let Some(downloader) = queue.lock().await.pop_front() {
+                            let downloader_clone = downloader.clone();
                             if !downloader.lock().await.is_pending_async().await {
                                 continue;
                             }
-                            let future = downloader.lock().await.start_download();
-                            futures.push(future);
+                            let _ = &mut downloadings.push(downloader_clone);
+                            downloading_count += 1;
+                            downloader.lock().await.start_download();
                         }
                     }
-                    for future in futures {
-                        future.await;
+                    for i in (0..downloadings.len()).rev() {
+                        let downloader = downloadings.get(i).unwrap();
+                        if downloader.lock().await.is_done() {
+                            downloadings.remove(i);
+                            downloading_count -= 1;
+                        }
+                    }
+                    if downloadings.len() > *parallel_count.read().await {
+                        let mut remove_count = downloadings.len() - *parallel_count.read().await;
+                        while remove_count > 0 {
+                            let index = downloadings.len() - 1;
+                            let downloader = downloadings.get(index).unwrap();
+                            downloader.lock().await.stop_async().await;
+                            downloader.lock().await.pending_async().await;
+                            queue.lock().await.push_back(downloader.clone());
+                            downloadings.remove(downloadings.len() - 1);
+                            remove_count -= 1;
+                            downloading_count -= 1;
+                        }
                     }
                 }
             })

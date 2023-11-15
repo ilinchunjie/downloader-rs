@@ -4,7 +4,7 @@ use reqwest::Client;
 use parking_lot::RwLock;
 use tokio::spawn;
 use tokio::sync::{Mutex};
-use tokio::sync::watch::Receiver;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use crate::download_status::DownloadStatus;
 use crate::chunk_hub::ChunkHub;
@@ -20,7 +20,7 @@ pub struct Downloader {
     chunk_hub: Arc<Mutex<ChunkHub>>,
     cancel_token: CancellationToken,
     sender: Arc<DownloadSender>,
-    is_done_receiver: Option<Receiver<bool>>,
+    thread_handle: Option<JoinHandle<()>>,
 }
 
 impl Downloader {
@@ -33,35 +33,25 @@ impl Downloader {
             download_status: Arc::new(RwLock::new(DownloadStatus::None)),
             cancel_token: CancellationToken::new(),
             sender,
-            is_done_receiver: None,
+            thread_handle: None,
         };
         downloader
     }
 
-    pub fn start_download(&mut self) -> impl Future<Output=()> {
-        let config = self.config.clone();
-        let client = self.client.clone();
-        let chunk_hub = self.chunk_hub.clone();
-        let cancel_token = self.cancel_token.clone();
-        let sender = self.sender.clone();
-        let download_status = self.download_status.clone();
-        let (is_done_sender, is_done_receiver) = tokio::sync::watch::channel(false);
-        self.is_done_receiver = Some(is_done_receiver);
-        async move {
-            async_start_download(
-                config,
-                client,
-                chunk_hub,
-                cancel_token,
-                sender,
-                download_status).await;
-            let _ = is_done_sender.send(true);
-        }
+    pub fn start_download(&mut self) {
+        let handle = spawn(async_start_download(
+            self.config.clone(),
+            self.client.clone(),
+            self.chunk_hub.clone(),
+            self.cancel_token.clone(),
+            self.sender.clone(),
+            self.download_status.clone()));
+        self.thread_handle = Some(handle);
     }
 
     pub fn is_done(&self) -> bool {
-        if let Some(receiver) = &self.is_done_receiver {
-            return *receiver.borrow();
+        if let Some(handle) = &self.thread_handle {
+            return handle.is_finished();
         }
         return false;
     }
