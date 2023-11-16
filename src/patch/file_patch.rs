@@ -114,19 +114,19 @@ pub async fn patch_file(old_file_path: impl AsRef<Path>, patch_file_path: impl A
         let op = u8::from_ne_bytes(slice.try_into().unwrap());
         if op == 0 {
             let slice = &mut buffer[0..8];
-            patch_file.read(slice).await?;
+            patch_file.read_exact(slice).await?;
             let offset = u64::from_le_bytes(slice.try_into().unwrap());
-            patch_file.read(slice).await?;
+            patch_file.read_exact(slice).await?;
             let length = u64::from_le_bytes(slice.try_into().unwrap()) as usize;
             old_file.seek(SeekFrom::Start(offset)).await?;
-            old_file.read(&mut buffer[0..length]).await?;
-            new_file.write(&mut buffer[0..length]).await?;
+            old_file.read_exact(&mut buffer[0..length]).await?;
+            new_file.write_all(&mut buffer[0..length]).await?;
         } else {
             let slice = &mut buffer[0..8];
-            patch_file.read(slice).await?;
+            patch_file.read_exact(slice).await?;
             let length = u64::from_le_bytes(slice.try_into().unwrap()) as usize;
-            patch_file.read(&mut buffer[0..length]).await?;
-            new_file.write(&mut buffer[0..length]).await?;
+            patch_file.read_exact(&mut buffer[0..length]).await?;
+            new_file.write_all(&mut buffer[0..length]).await?;
         }
     }
     Ok(())
@@ -139,7 +139,7 @@ mod test {
 
     #[tokio::test]
     async fn test_calculate_file() {
-        if let Err(e) = generate_patch_file("res/sausageclub_old.unity3d", "res/sausageclub_new.unity3d", "res/sausageclub.patch", 1024 * 512).await {
+        if let Err(e) = generate_patch_file("res/sausageclub_old.unity3d", "res/sausageclub_new.unity3d", "res/sausageclub.patch", 1024 * 1024).await {
             println!("{}", e);
         }
         if let Err(e) = patch_file("res/sausageclub_old.unity3d", "res/sausageclub.patch", "res/sausageclub.unity3d").await {
