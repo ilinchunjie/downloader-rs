@@ -3,6 +3,7 @@ use crate::file_verify::FileVerify;
 
 pub struct DownloadConfiguration {
     pub url: Option<Arc<String>>,
+    pub patch_url: Option<Arc<String>>,
     pub path: Option<Arc<String>>,
     pub chunk_size: u64,
     pub total_length: u64,
@@ -11,6 +12,7 @@ pub struct DownloadConfiguration {
     pub receive_bytes_per_second: u64,
     pub range_download: bool,
     pub chunk_download: bool,
+    pub enable_diff_patch: bool,
     pub file_verify: FileVerify,
 }
 
@@ -50,6 +52,16 @@ impl DownloadConfigurationBuilder {
         self
     }
 
+    pub fn enable_diff_patch(mut self, patch_url: &str) -> DownloadConfigurationBuilder {
+        self.config.patch_url = Some(Arc::new(patch_url.to_string()));
+        self
+    }
+
+    pub fn set_patch_file_url(mut self, enable_diff_patch: bool) -> DownloadConfigurationBuilder {
+        self.config.enable_diff_patch = enable_diff_patch;
+        self
+    }
+
     pub fn set_chunk_size(mut self, chunk_size: u64) -> DownloadConfigurationBuilder {
         self.config.chunk_size = chunk_size;
         self
@@ -83,6 +95,12 @@ impl DownloadConfigurationBuilder {
             panic!("No download path specified.");
         }
 
+        if self.config.enable_diff_patch {
+            if self.config.patch_url == None {
+                panic!("No patch file url specified.");
+            }
+        }
+
         self.config
     }
 }
@@ -92,9 +110,11 @@ impl DownloadConfiguration {
         let config = DownloadConfiguration {
             url: None,
             path: None,
+            patch_url: None,
             file_verify: FileVerify::None,
             range_download: true,
             chunk_download: false,
+            enable_diff_patch: false,
             chunk_size: 1024 * 1024 * 5,
             total_length: 0,
             remote_version: 0,
@@ -109,4 +129,8 @@ impl DownloadConfiguration {
     }
 
     pub fn url(&self) -> &str { return self.url.as_ref().unwrap().as_str(); }
+
+    pub fn patch_url(&self) -> &str {
+        return self.patch_url.as_ref().unwrap().as_str();
+    }
 }

@@ -4,16 +4,13 @@ use std::path::Path;
 use std::pin::Pin;
 use fastcdc;
 use fastcdc::v2020::{AsyncStreamCDC, ChunkData, Error};
-use futures::Stream;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio_stream::StreamExt;
 use xxhash_rust::xxh64::xxh64;
 
-async fn get_file_chunks(file_path: impl AsRef<Path>, avg_size: u32) -> Result<HashMap<u64, HashMap<usize, ChunkData>>, tokio::io::Error> {
+async fn get_file_chunks(file_path: impl AsRef<Path>, min_size: u32, avg_size: u32, max_size: u32) -> Result<HashMap<u64, HashMap<usize, ChunkData>>, tokio::io::Error> {
     let mut hashmap: HashMap<u64, HashMap<usize, ChunkData>> = HashMap::new();
-    let min_size = avg_size / 4;
-    let max_size = avg_size * 4;
     let file = File::open(file_path).await?;
     let mut chunks = AsyncStreamCDC::new(file, min_size, avg_size, max_size);
     let mut stream = Box::pin(chunks.as_stream());
@@ -36,7 +33,7 @@ async fn get_file_chunks(file_path: impl AsRef<Path>, avg_size: u32) -> Result<H
     Ok(hashmap)
 }
 
-pub async fn generate_patch_file(old_file_path: impl AsRef<Path>, new_file_path: impl AsRef<Path>, patch_file_path: impl AsRef<Path>, avg_size: u32) -> Result<(), tokio::io::Error> {
+pub async fn create_patch_file(old_file_path: impl AsRef<Path>, new_file_path: impl AsRef<Path>, patch_file_path: impl AsRef<Path>, avg_size: u32) -> Result<(), tokio::io::Error> {
     let min_size = avg_size / 4;
     let max_size = avg_size * 4;
 
@@ -44,26 +41,15 @@ pub async fn generate_patch_file(old_file_path: impl AsRef<Path>, new_file_path:
     let mut chunks = AsyncStreamCDC::new(new_file, min_size, avg_size, max_size);
     let mut new_chunk_stream = Box::pin(chunks.as_stream());
 
-    let mut patch_file = File::create(patch_file_path).await.expect("create patch file failed");
+    let old_chunks = get_file_chunks(old_file_path, min_size, avg_size, max_size).await?;
 
-    patch_file.write_u32_le(avg_size).await?;
-
-    let old_chunks = get_file_chunks(old_file_path, avg_size).await?;
+    let mut patch_file = File::create(patch_file_path).await?;
+    patch_file.write_u32_le(max_size).await?;
 
     loop {
-        async fn get_chunk_data(stream: &mut Pin<Box<impl Stream<Item=Result<ChunkData, Error>> + Sized>>) -> Option<ChunkData> {
-            let chunk = stream.next().await;
-            if chunk.is_none() {
-                return None;
-            }
-            let result = chunk.unwrap();
-            if let Err(_) = result {
-                return None;
-            }
-            return Some(result.unwrap());
-        }
-
-        let new_chunk = get_chunk_data(&mut new_chunk_stream).await;
+        let new_chunk = new_chunk_stream.next().await.and_then(|result| {
+            result.ok()
+        });
 
         if new_chunk.is_none() {
             break;
@@ -72,61 +58,59 @@ pub async fn generate_patch_file(old_file_path: impl AsRef<Path>, new_file_path:
         let new_chunk = new_chunk.unwrap();
 
         let hash = xxh64(&new_chunk.data, 0);
-        match old_chunks.get(&hash) {
+        let old_chunk = old_chunks.get(&hash).and_then(|chunks| {
+            return chunks.get(&new_chunk.length);
+        });
+
+        match old_chunk {
             None => {
                 patch_file.write_u8(1).await?;
                 patch_file.write_u64_le(new_chunk.length as u64).await?;
                 patch_file.write_all(&new_chunk.data).await?;
             }
-            Some(old_chunks) => {
-                match old_chunks.get(&new_chunk.length) {
-                    None => {
-                        patch_file.write_u8(1).await?;
-                        patch_file.write_u64_le(new_chunk.length as u64).await?;
-                        patch_file.write_all(&new_chunk.data).await?;
-                    }
-                    Some(old_chunk) => {
-                        patch_file.write_u8(0).await?;
-                        patch_file.write_u64_le(old_chunk.offset).await?;
-                        patch_file.write_u64_le(old_chunk.length as u64).await?;
-
-                    }
-                }
+            Some(old_chunk) => {
+                patch_file.write_u8(0).await?;
+                patch_file.write_u64_le(old_chunk.offset).await?;
+                patch_file.write_u64_le(old_chunk.length as u64).await?;
             }
         }
     }
+
     patch_file.flush().await?;
     Ok(())
 }
 
-pub async fn patch_file(old_file_path: impl AsRef<Path>, patch_file_path: impl AsRef<Path>, new_file_path: impl AsRef<Path>) -> Result<(), tokio::io::Error> {
+pub async fn patch(old_file_path: impl AsRef<Path>, patch_file_path: impl AsRef<Path>, new_file_path: impl AsRef<Path>) -> Result<(), tokio::io::Error> {
     let mut new_file = File::create(new_file_path).await?;
     let mut old_file = File::open(old_file_path).await?;
     let mut patch_file = File::open(patch_file_path).await?;
-    let avg_chunk_size = patch_file.read_u32_le().await? as usize;
-    let mut buffer = vec![0_u8; avg_chunk_size * 4usize];
+
+    let max_size = patch_file.read_u32_le().await? as usize;
+    let mut buffer = vec![0_u8; max_size];
+    let mut u8_bytes = [0u8; 1];
+    let mut u64_bytes = [0u8; 8];
     loop {
-        let bytes_read = patch_file.read(&mut buffer[0..1]).await?;
+        let bytes_read = patch_file.read(&mut u8_bytes).await?;
         if bytes_read == 0 {
             break;
         }
-        let slice = &mut buffer[0..1];
-        let op = u8::from_ne_bytes(slice.try_into().unwrap());
-        if op == 0 {
-            let slice = &mut buffer[0..8];
-            patch_file.read_exact(slice).await?;
-            let offset = u64::from_le_bytes(slice.try_into().unwrap());
-            patch_file.read_exact(slice).await?;
-            let length = u64::from_le_bytes(slice.try_into().unwrap()) as usize;
-            old_file.seek(SeekFrom::Start(offset)).await?;
-            old_file.read_exact(&mut buffer[0..length]).await?;
-            new_file.write_all(&mut buffer[0..length]).await?;
-        } else {
-            let slice = &mut buffer[0..8];
-            patch_file.read_exact(slice).await?;
-            let length = u64::from_le_bytes(slice.try_into().unwrap()) as usize;
-            patch_file.read_exact(&mut buffer[0..length]).await?;
-            new_file.write_all(&mut buffer[0..length]).await?;
+        let op = u8::from_ne_bytes(u8_bytes);
+        match op {
+            0 => {
+                patch_file.read_exact(&mut u64_bytes).await?;
+                let offset = u64::from_le_bytes(u64_bytes);
+                patch_file.read_exact(&mut u64_bytes).await?;
+                let length = u64::from_le_bytes(u64_bytes) as usize;
+                old_file.seek(SeekFrom::Start(offset)).await?;
+                old_file.read_exact(&mut buffer[0..length]).await?;
+                new_file.write_all(&mut buffer[0..length]).await?;
+            }
+            _ => {
+                patch_file.read_exact(&mut u64_bytes).await?;
+                let length = u64::from_le_bytes(u64_bytes) as usize;
+                patch_file.read_exact(&mut buffer[0..length]).await?;
+                new_file.write_all(&mut buffer[0..length]).await?;
+            }
         }
     }
     Ok(())
@@ -134,20 +118,31 @@ pub async fn patch_file(old_file_path: impl AsRef<Path>, patch_file_path: impl A
 
 #[cfg(test)]
 mod test {
+    use std::path::Path;
+    use tokio::time::Instant;
     use crate::file_verify::calculate_file_xxhash;
-    use crate::patch::file_patch::{generate_patch_file, patch_file};
+    use crate::patch::file_patch::{create_patch_file, patch};
 
     #[tokio::test]
     async fn test_calculate_file() {
-        if let Err(e) = generate_patch_file("res/sausageclub_old.unity3d", "res/sausageclub_new.unity3d", "res/sausageclub.patch", 1024 * 1024).await {
+        let old_file_path = Path::new("res/Pack1.prefab");
+        let new_file_path = Path::new("res/Pack2.prefab");
+        let patch_file_path = Path::new("res/Pack2.patch");
+        let save_file_path = Path::new("res/Pack2_new.prefab");
+
+        let time = Instant::now();
+        if let Err(e) = create_patch_file(old_file_path, new_file_path, patch_file_path, 1024 * 2).await {
             println!("{}", e);
         }
-        if let Err(e) = patch_file("res/sausageclub_old.unity3d", "res/sausageclub.patch", "res/sausageclub.unity3d").await {
+        println!("{}", time.elapsed().as_secs());
+        let time = Instant::now();
+        if let Err(e) = patch(old_file_path, patch_file_path, save_file_path).await {
             println!("{}", e);
         }
-        let hash = calculate_file_xxhash("res/sausageclub_new.unity3d", 0).await;
+        println!("{}", time.elapsed().as_secs());
+        let hash = calculate_file_xxhash(new_file_path, 0).await;
         println!("{}", hash.unwrap());
-        let hash = calculate_file_xxhash("res/sausageclub.unity3d", 0).await;
+        let hash = calculate_file_xxhash(save_file_path, 0).await;
         println!("{}", hash.unwrap());
     }
 }
