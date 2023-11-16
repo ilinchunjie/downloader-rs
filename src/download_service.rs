@@ -12,7 +12,7 @@ use crate::download_tracker;
 use crate::downloader::{Downloader};
 
 
-type DownloaderQueue = VecDeque<Arc<Mutex<Downloader>>>;
+type DownloaderQueue = VecDeque<Arc<Downloader>>;
 
 pub struct DownloadService {
     multi_thread: bool,
@@ -67,17 +67,17 @@ impl DownloadService {
                     while downloading_count < *parallel_count.read().await && queue.lock().await.len() > 0 {
                         if let Some(downloader) = queue.lock().await.pop_front() {
                             let downloader_clone = downloader.clone();
-                            if !downloader.lock().await.is_pending_async().await {
+                            if !downloader.is_pending_async().await {
                                 continue;
                             }
                             let _ = &mut downloadings.push(downloader_clone);
                             downloading_count += 1;
-                            downloader.lock().await.start_download();
+                            downloader.start_download();
                         }
                     }
                     for i in (0..downloadings.len()).rev() {
                         let downloader = downloadings.get(i).unwrap();
-                        if downloader.lock().await.is_done() {
+                        if downloader.is_done() {
                             downloadings.remove(i);
                             downloading_count -= 1;
                         }
@@ -87,8 +87,8 @@ impl DownloadService {
                         while remove_count > 0 {
                             let index = downloadings.len() - 1;
                             let downloader = downloadings.get(index).unwrap();
-                            downloader.lock().await.stop_async().await;
-                            downloader.lock().await.pending_async().await;
+                            downloader.stop_async().await;
+                            downloader.pending_async().await;
                             queue.lock().await.push_back(downloader.clone());
                             downloadings.remove(downloadings.len() - 1);
                             remove_count -= 1;
@@ -120,7 +120,7 @@ impl DownloadService {
         let (tx, rx) = download_tracker::new();
         let mut downloader = Downloader::new(config, self.client.clone(), Arc::new(tx));
         downloader.pending();
-        let downloader = Arc::new(Mutex::new(downloader));
+        let downloader = Arc::new(downloader);
         self.download_queue.blocking_lock().push_back(downloader.clone());
         let operation = DownloadOperation::new(downloader.clone(), rx);
         return operation;

@@ -1,18 +1,17 @@
 use std::sync::{Arc};
-use tokio::sync::Mutex;
 use crate::download_status::DownloadStatus;
 use crate::download_receiver::DownloadReceiver;
 use crate::downloader::{Downloader};
 use crate::error::DownloadError;
 
 pub struct DownloadOperation {
-    downloader: Arc<Mutex<Downloader>>,
+    downloader: Arc<Downloader>,
     download_receiver: DownloadReceiver,
 }
 
 impl DownloadOperation {
     pub fn new(
-        downloader: Arc<Mutex<Downloader>>,
+        downloader: Arc<Downloader>,
         download_receiver: DownloadReceiver) -> DownloadOperation {
         DownloadOperation {
             downloader,
@@ -21,7 +20,7 @@ impl DownloadOperation {
     }
 
     pub fn status(&self) -> DownloadStatus {
-        let status = self.downloader.blocking_lock().status();
+        let status = self.downloader.status();
         return status;
     }
 
@@ -44,7 +43,7 @@ impl DownloadOperation {
     }
 
     pub fn is_done(&self) -> bool {
-        return self.downloader.blocking_lock().is_done();
+        return self.downloader.is_done();
     }
 
     pub fn is_error(&self) -> bool {
@@ -56,6 +55,6 @@ impl DownloadOperation {
     }
 
     pub fn stop(&self) {
-        self.downloader.blocking_lock().stop();
+        self.downloader.stop();
     }
 }

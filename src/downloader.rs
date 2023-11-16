@@ -21,7 +21,7 @@ pub struct Downloader {
     download_status: Arc<RwLock<DownloadStatus>>,
     cancel_token: CancellationToken,
     sender: Arc<DownloadSender>,
-    thread_handle: Option<JoinHandle<()>>,
+    thread_handle: RwLock<Option<JoinHandle<()>>>,
 }
 
 impl Downloader {
@@ -33,23 +33,23 @@ impl Downloader {
             download_status: Arc::new(RwLock::new(DownloadStatus::None)),
             cancel_token: CancellationToken::new(),
             sender,
-            thread_handle: None,
+            thread_handle: RwLock::new(None),
         };
         downloader
     }
 
-    pub fn start_download(&mut self) {
+    pub fn start_download(&self) {
         let handle = spawn(async_start_download(
             self.config.clone(),
             self.client.clone(),
             self.cancel_token.clone(),
             self.sender.clone(),
             self.download_status.clone()));
-        self.thread_handle = Some(handle);
+        *self.thread_handle.write() = Some(handle);
     }
 
     pub fn is_done(&self) -> bool {
-        if let Some(handle) = &self.thread_handle {
+        if let Some(handle) = self.thread_handle.read().as_ref() {
             return handle.is_finished();
         }
         return false;
@@ -67,16 +67,16 @@ impl Downloader {
         *self.download_status.write() = DownloadStatus::Pending;
     }
 
-    pub async fn pending_async(&mut self) {
+    pub async fn pending_async(&self) {
         *self.download_status.write() = DownloadStatus::Pending;
     }
 
-    pub fn stop(&mut self) {
+    pub fn stop(&self) {
         self.cancel_token.cancel();
         *self.download_status.write() = DownloadStatus::Stop;
     }
 
-    pub async fn stop_async(&mut self) {
+    pub async fn stop_async(&self) {
         self.cancel_token.cancel();
         *self.download_status.write() = DownloadStatus::Stop;
     }
@@ -159,7 +159,7 @@ async fn async_start_download(
         let handle = spawn(async move {
             loop {
                 sync_downloaded_size(&receivers, &sender);
-                sleep(Duration::from_millis(500)).await;
+                sleep(Duration::from_millis(100)).await;
             }
         });
         handle
