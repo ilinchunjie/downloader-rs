@@ -15,3 +15,4 @@ pub mod download_configuration;
 pub mod download_service;
 pub mod downloader;
 pub mod download_operation;
+mod patch;
