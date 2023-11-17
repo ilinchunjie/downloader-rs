@@ -28,7 +28,7 @@ a simple file downloader for rust
 - [x] md5/xxHash file verification
 - [x] download speed limit
 - [x] retry times after request failure
-- [ ] incremental updates by using the fast CDC algorithm.
+- [x] incremental updates by using the fast-cdc algorithm.
 
 # Welcome to submit pull requests.
 
