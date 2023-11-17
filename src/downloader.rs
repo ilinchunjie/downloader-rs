@@ -3,7 +3,6 @@ use std::sync::{Arc};
 use std::time::Duration;
 use reqwest::Client;
 use parking_lot::RwLock;
-use tokio::fs::File;
 use tokio::{fs, spawn};
 use tokio::sync::watch::{Receiver};
 use tokio::task::JoinHandle;

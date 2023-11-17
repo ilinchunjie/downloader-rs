@@ -3,8 +3,7 @@ use tokio::{fs};
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::watch::{Receiver, channel};
-#[allow(unused_imports)]
-use crate::{chunk, chunk_metadata, file_verify};
+use crate::{chunk_metadata};
 use crate::chunk::{Chunk};
 use crate::chunk_range::ChunkRange;
 use crate::download_configuration::DownloadConfiguration;
