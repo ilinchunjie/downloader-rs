@@ -10,7 +10,7 @@ pub struct DownloadConfig {
     retry_times: u8,
     chunk_download: bool,
     version: i64,
-    chunk_siez: u64,
+    chunk_size: u64,
 }
 
 #[no_mangle]
@@ -49,7 +49,7 @@ pub extern "C" fn add_downloader(ptr: *mut DownloadService, config: DownloadConf
         .set_url(&url)
         .set_file_path(&path)
         .set_chunk_download(config.chunk_download)
-        .set_chunk_size(config.chunk_siez)
+        .set_chunk_size(config.chunk_size)
         .set_remote_version(config.version)
         .set_retry_times_on_failure(config.retry_times)
         .build();
