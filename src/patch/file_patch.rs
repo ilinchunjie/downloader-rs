@@ -69,13 +69,13 @@ pub async fn create_patch_file(old_file_path: impl AsRef<Path>, new_file_path: i
         match old_chunk {
             None => {
                 patch_file.write_u8(1).await?;
-                patch_file.write_u64_le(new_chunk.length as u64).await?;
+                patch_file.write_u32_le(new_chunk.length as u32).await?;
                 patch_file.write_all(&new_chunk.data).await?;
             }
             Some(old_chunk) => {
                 patch_file.write_u8(0).await?;
                 patch_file.write_u64_le(old_chunk.offset).await?;
-                patch_file.write_u64_le(old_chunk.length as u64).await?;
+                patch_file.write_u32_le(old_chunk.length as u32).await?;
             }
         }
     }
@@ -94,6 +94,7 @@ pub async fn patch(old_file_path: impl AsRef<Path>, patch_file_path: impl AsRef<
     let mut buffer = vec![0_u8; max_size];
     let mut u8_bytes = [0u8; 1];
     let mut u64_bytes = [0u8; 8];
+    let mut u32_bytes = [0u8; 4];
     loop {
         let bytes_read = patch_file.read(&mut u8_bytes).await?;
         if bytes_read == 0 {
@@ -104,15 +105,15 @@ pub async fn patch(old_file_path: impl AsRef<Path>, patch_file_path: impl AsRef<
             0 => {
                 patch_file.read_exact(&mut u64_bytes).await?;
                 let offset = u64::from_le_bytes(u64_bytes);
-                patch_file.read_exact(&mut u64_bytes).await?;
-                let length = u64::from_le_bytes(u64_bytes) as usize;
+                patch_file.read_exact(&mut u32_bytes).await?;
+                let length = u32::from_le_bytes(u32_bytes) as usize;
                 old_file.seek(SeekFrom::Start(offset)).await?;
                 old_file.read_exact(&mut buffer[0..length]).await?;
                 new_file.write_all(&mut buffer[0..length]).await?;
             }
             _ => {
-                patch_file.read_exact(&mut u64_bytes).await?;
-                let length = u64::from_le_bytes(u64_bytes) as usize;
+                patch_file.read_exact(&mut u32_bytes).await?;
+                let length = u32::from_le_bytes(u32_bytes) as usize;
                 patch_file.read_exact(&mut buffer[0..length]).await?;
                 new_file.write_all(&mut buffer[0..length]).await?;
             }
