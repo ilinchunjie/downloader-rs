@@ -1,14 +1,16 @@
 use std::collections::HashMap;
 use std::io::SeekFrom;
 use std::path::Path;
-use std::pin::Pin;
-use fastcdc;
-use fastcdc::v2020::{AsyncStreamCDC, ChunkData, Error};
+#[cfg(feature = "patch")]
+use fastcdc::v2020::{AsyncStreamCDC, ChunkData};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+#[cfg(feature = "patch")]
 use tokio_stream::StreamExt;
 use xxhash_rust::xxh64::xxh64;
 
+#[allow(dead_code)]
+#[cfg(feature = "patch")]
 async fn get_file_chunks(file_path: impl AsRef<Path>, min_size: u32, avg_size: u32, max_size: u32) -> Result<HashMap<u64, HashMap<usize, ChunkData>>, tokio::io::Error> {
     let mut hashmap: HashMap<u64, HashMap<usize, ChunkData>> = HashMap::new();
     let file = File::open(file_path).await?;
@@ -33,6 +35,8 @@ async fn get_file_chunks(file_path: impl AsRef<Path>, min_size: u32, avg_size: u
     Ok(hashmap)
 }
 
+#[allow(dead_code)]
+#[cfg(feature = "patch")]
 pub async fn create_patch_file(old_file_path: impl AsRef<Path>, new_file_path: impl AsRef<Path>, patch_file_path: impl AsRef<Path>, avg_size: u32) -> Result<(), tokio::io::Error> {
     let min_size = avg_size / 4;
     let max_size = avg_size * 4;
@@ -80,6 +84,7 @@ pub async fn create_patch_file(old_file_path: impl AsRef<Path>, new_file_path: i
     Ok(())
 }
 
+#[cfg(feature = "patch")]
 pub async fn patch(old_file_path: impl AsRef<Path>, patch_file_path: impl AsRef<Path>, new_file_path: impl AsRef<Path>) -> Result<(), tokio::io::Error> {
     let mut new_file = File::create(new_file_path).await?;
     let mut old_file = File::open(old_file_path).await?;

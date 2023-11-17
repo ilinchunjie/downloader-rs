@@ -19,6 +19,8 @@ pub enum DownloadError {
     OpenOrCreateFile,
     FileVerify,
     DownloadTask,
+    Patch,
+    ChunkDownloadHandle,
 }
 
 pub type Result<T> = core::result::Result<T, DownloadError>;
@@ -49,6 +51,8 @@ impl Display for DownloadError {
             DownloadError::FileVerify => {
                 write!(f, "FileVerify")
             }
+            DownloadError::Patch => { write!(f, "Patch") }
+            DownloadError::ChunkDownloadHandle => { write!(f, "ChunkDownloadHandle") }
         }
     }
 }

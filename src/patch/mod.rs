@@ -1,1 +1,1 @@
-mod file_patch;
+pub mod file_patch;

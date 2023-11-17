@@ -23,6 +23,7 @@ pub extern "C" fn start_download_service(multi_thread: bool, thread_count: u16, 
     Box::into_raw(Box::new(download_service))
 }
 
+#[no_mangle]
 pub extern "C" fn set_parallel_count(ptr: *mut DownloadService, count: u16) {
     let service = unsafe { ptr.as_mut().expect("invalid ptr: ") };
     service.set_parallel_count(count as usize)

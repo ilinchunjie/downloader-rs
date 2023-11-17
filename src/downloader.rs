@@ -3,17 +3,20 @@ use std::sync::{Arc};
 use std::time::Duration;
 use reqwest::Client;
 use parking_lot::RwLock;
-use tokio::spawn;
+use tokio::fs::File;
+use tokio::{fs, spawn};
 use tokio::sync::watch::{Receiver};
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
-use crate::download_status::DownloadStatus;
+use crate::download_status::{DownloadFile, DownloadStatus};
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_sender::DownloadSender;
 use crate::{chunk, chunk_hub, file_verify, remote_file};
+use crate::error::DownloadError;
 use crate::file_verify::FileVerify;
-use crate::remote_file::{RemoteFile};
+#[cfg(feature = "patch")]
+use crate::patch::file_patch;
 
 pub struct Downloader {
     config: Arc<DownloadConfiguration>,
@@ -39,12 +42,73 @@ impl Downloader {
     }
 
     pub fn start_download(&self) {
-        let handle = spawn(async_start_download(
-            self.config.clone(),
-            self.client.clone(),
-            self.cancel_token.clone(),
-            self.sender.clone(),
-            self.download_status.clone()));
+        let config = self.config.clone();
+        let client = self.client.clone();
+        let cancel_token = self.cancel_token.clone();
+        let sender = self.sender.clone();
+        let download_status = self.download_status.clone();
+        let handle = spawn(async move {
+            #[cfg(feature = "patch")]
+            if config.enable_diff_patch {
+                let patch_file_path = format!("{}.patch", config.get_file_path());
+                let download_patch_config = DownloadConfiguration::new()
+                    .set_url(config.url())
+                    .set_file_path(&patch_file_path)
+                    .set_download_speed_limit(config.receive_bytes_per_second)
+                    .set_remote_version(config.remote_version)
+                    .build();
+                if let Ok(_) = start_download_file(Arc::new(download_patch_config),
+                                                   client.clone(),
+                                                   cancel_token.clone(),
+                                                   sender.clone(),
+                                                   download_status.clone()).await {
+                    if cancel_token.is_cancelled() {
+                        return;
+                    }
+                    if let Ok(_) = start_apply_patch(&patch_file_path, &config).await {
+                        if config.file_verify != FileVerify::None {
+                            *download_status.write() = DownloadStatus::FileVerify;
+                            if let Ok(()) = file_verify::file_validate(&config.file_verify, config.get_file_temp_path()).await {
+                                if let Ok(_) = fs::rename(config.get_file_temp_path(), config.get_file_path()).await {
+                                    *download_status.write() = DownloadStatus::Complete;
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if let Err(e) = start_download_file(config.clone(),
+                                                client.clone(),
+                                                cancel_token.clone(),
+                                                sender.clone(),
+                                                download_status.clone()).await {
+                sender.error_sender.send(e).unwrap();
+                *download_status.write() = DownloadStatus::Failed;
+                return;
+            }
+
+            if cancel_token.is_cancelled() {
+                return;
+            }
+
+            if config.file_verify != FileVerify::None {
+                *download_status.write() = DownloadStatus::FileVerify;
+                if let Err(e) = file_verify::file_validate(&config.file_verify, config.get_file_temp_path()).await {
+                    sender.error_sender.send(e).unwrap();
+                    *download_status.write() = DownloadStatus::Failed;
+                    return;
+                }
+            }
+
+            if let Err(e) = fs::rename(config.get_file_temp_path(), config.get_file_path()).await {
+                sender.error_sender.send(DownloadError::FileRename(format!("file rename failed {}", e))).unwrap();
+                *download_status.write() = DownloadStatus::Failed;
+                return;
+            }
+
+            *download_status.write() = DownloadStatus::Complete;
+        });
         *self.thread_handle.write() = Some(handle);
     }
 
@@ -82,49 +146,42 @@ impl Downloader {
     }
 }
 
-async fn async_start_download(
+#[cfg(feature = "patch")]
+async fn start_apply_patch(patch_file_path: &str, config: &Arc<DownloadConfiguration>) -> crate::error::Result<()> {
+    if let Err(_) = file_patch::patch(config.get_file_path(), patch_file_path, config.get_file_temp_path()).await {
+        return Err(DownloadError::Patch);
+    }
+    Ok(())
+}
+
+async fn start_download_file(
     config: Arc<DownloadConfiguration>,
     client: Arc<Client>,
     cancel_token: CancellationToken,
     sender: Arc<DownloadSender>,
-    status: Arc<RwLock<DownloadStatus>>) {
+    status: Arc<RwLock<DownloadStatus>>) -> crate::error::Result<()> {
     if cancel_token.is_cancelled() {
-        return;
+        return Ok(());
     }
 
     *status.write() = DownloadStatus::Head;
 
-    let remote_file: Option<RemoteFile>;
-    match remote_file::head(&client, &config).await {
-        Ok(value) => {
-            remote_file = Some(value);
-        }
-        Err(e) => {
-            sender.error_sender.send(e).unwrap();
-            *status.write() = DownloadStatus::Failed;
-            return;
-        }
-    }
+    let remote_file = remote_file::head(&client, &config).await?;
 
     if cancel_token.is_cancelled() {
-        return;
+        return Ok(());
     }
 
-    *status.write() = DownloadStatus::Download;
-
-    let remote_file = remote_file.unwrap();
+    let download_file = match config.download_patch {
+        true => DownloadFile::Patch,
+        false => DownloadFile::File
+    };
+    *status.write() = DownloadStatus::Download(download_file);
 
     let _ = sender.download_total_size_sender.send(remote_file.total_length);
 
-    let result = chunk_hub::validate(&config, remote_file).await;
+    let (chunks, receivers) = chunk_hub::validate(&config, remote_file).await?;
 
-    if let Err(e) = result {
-        sender.error_sender.send(e).unwrap();
-        *status.write() = DownloadStatus::Failed;
-        return;
-    }
-
-    let (chunks, receivers) = result.unwrap();
     let mut handles = Vec::with_capacity(chunks.len());
     let chunk_length = chunks.len();
     for chunk in chunks {
@@ -151,9 +208,8 @@ async fn async_start_download(
 
     let receivers = Arc::new(receivers);
 
-    sync_downloaded_size(&receivers, &sender);
-
     let downloaded_size_handle = {
+        sync_downloaded_size(&receivers, &sender);
         let sender = sender.clone();
         let receivers = receivers.clone();
         let handle = spawn(async move {
@@ -165,20 +221,18 @@ async fn async_start_download(
         handle
     };
 
+
     for handle in handles {
         match handle.await {
             Ok(result) => {
                 if let Err(e) = result {
                     downloaded_size_handle.abort();
-                    sender.error_sender.send(e).unwrap();
-                    *status.write() = DownloadStatus::Failed;
-                    return;
+                    return Err(e);
                 }
             }
             Err(_) => {
                 downloaded_size_handle.abort();
-                *status.write() = DownloadStatus::Failed;
-                return;
+                return Err(DownloadError::ChunkDownloadHandle);
             }
         }
     }
@@ -186,29 +240,13 @@ async fn async_start_download(
     downloaded_size_handle.abort();
 
     if cancel_token.is_cancelled() {
-        return;
+        return Ok(());
     }
 
     sync_downloaded_size(&receivers, &sender);
 
     *status.write() = DownloadStatus::DownloadPost;
-    if let Err(e) = chunk_hub::on_download_post(&config, chunk_length).await {
-        sender.error_sender.send(e).unwrap();
-        *status.write() = DownloadStatus::Failed;
-        return;
-    }
+    chunk_hub::on_download_post(&config, chunk_length).await?;
 
-    if cancel_token.is_cancelled() {
-        return;
-    }
-
-    if config.file_verify != FileVerify::None {
-        *status.write() = DownloadStatus::FileVerify;
-        if let Err(e) = file_verify::file_validate(&config.file_verify, config.get_file_path()).await {
-            sender.error_sender.send(e).unwrap();
-            *status.write() = DownloadStatus::Failed;
-        }
-    }
-
-    *status.write() = DownloadStatus::Complete;
+    Ok(())
 }

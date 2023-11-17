@@ -12,52 +12,42 @@ use crate::error::DownloadError;
 use crate::remote_file::RemoteFile;
 
 pub async fn on_download_post(config: &Arc<DownloadConfiguration>, chunk_length: usize) -> crate::error::Result<()> {
-    match chunk_length {
-        1 => {
-            let chunk_path = format!("{}.chunk{}", config.get_file_path(), 0);
-            if let Err(e) = fs::rename(&chunk_path, config.get_file_path()).await {
-                return Err(DownloadError::FileRename(format!("文件重命名失败 {}", e)));
-            }
-        }
-        _ => {
-            let mut output = OpenOptions::new().create(true).write(true).open(config.get_file_path()).await;
-            if let Ok(file) = &mut output {
-                let mut buffer = vec![0; 8192];
-                for i in 0..chunk_length {
-                    let chunk_path = format!("{}.chunk{}", config.get_file_path(), i);
-                    if let Ok(chunk_file) = &mut tokio::fs::File::open(chunk_path).await {
-                        loop {
-                            if let Ok(len) = chunk_file.read(&mut buffer).await {
-                                if len == 0 {
-                                    break;
-                                }
-                                if let Err(_e) = file.write(&buffer[0..len]).await {
-                                    return Err(DownloadError::FileWrite);
-                                }
-                            } else {
+    if chunk_length > 1 {
+        let mut output = OpenOptions::new().create(true).write(true).open(config.get_file_temp_path()).await;
+        if let Ok(file) = &mut output {
+            let mut buffer = vec![0; 8192];
+            for i in 0..chunk_length {
+                let chunk_path = format!("{}.chunk{}", config.get_file_path(), i);
+                if let Ok(chunk_file) = &mut tokio::fs::File::open(chunk_path).await {
+                    loop {
+                        if let Ok(len) = chunk_file.read(&mut buffer).await {
+                            if len == 0 {
+                                break;
+                            }
+                            if let Err(_e) = file.write(&buffer[0..len]).await {
                                 return Err(DownloadError::FileWrite);
                             }
+                        } else {
+                            return Err(DownloadError::FileWrite);
                         }
                     }
                 }
+            }
 
-                if let Err(_e) = file.flush().await {
-                    return Err(DownloadError::FileFlush);
-                }
+            if let Err(_e) = file.flush().await {
+                return Err(DownloadError::FileFlush);
+            }
 
-                for i in 0..chunk_length {
-                    let chunk_path = format!("{}.chunk{}", config.get_file_path(), i);
-                    if let Err(_e) = fs::remove_file(chunk_path).await {
-                        return Err(DownloadError::DeleteFile);
-                    }
+            for i in 0..chunk_length {
+                let chunk_path = format!("{}.chunk{}", config.get_file_path(), i);
+                if let Err(_e) = fs::remove_file(chunk_path).await {
+                    return Err(DownloadError::DeleteFile);
                 }
             }
         }
     }
 
-    {
-        chunk_metadata::delete_metadata(config.get_file_path()).await?;
-    }
+    chunk_metadata::delete_metadata(config.get_file_path()).await?;
 
     Ok(())
 }
@@ -81,7 +71,10 @@ pub async fn validate(config: &Arc<DownloadConfiguration>, remote_file: RemoteFi
     let mut receivers: Vec<Receiver<u64>> = Vec::with_capacity(chunk_count);
 
     for i in 0..chunk_count {
-        let file_path = format!("{}.chunk{}", config.get_file_path(), i);
+        let file_path = match chunk_count {
+            1 => config.get_file_temp_path().to_string(),
+            _ => format!("{}.chunk{}", config.get_file_path(), i)
+        };
         let mut chunk = Chunk::new(
             file_path,
             chunk_ranges.get(i).unwrap().clone(),
