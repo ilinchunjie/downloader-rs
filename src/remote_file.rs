@@ -65,7 +65,6 @@ pub async fn head(client: &Arc<Client>, config: &Arc<DownloadConfiguration>) -> 
                 }
             } else {
                 retry_count += 1;
-                println!("retry {}", retry_count);
                 continue 'r;
             }
         }
