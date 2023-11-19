@@ -35,23 +35,14 @@ pub async fn calculate_file_xxhash(file_path: impl AsRef<Path>, seed: u64) -> cr
 }
 
 pub async fn file_validate(file_verify: &FileVerify, file_path: impl AsRef<Path>) -> crate::error::Result<()> {
-    if *file_verify == FileVerify::None {
-        return Ok(());
-    }
-
     match file_verify {
-        FileVerify::None => {
-            return Ok(());
-        }
+        FileVerify::None => Ok(()),
         FileVerify::xxHash(value) => {
-            {
-                let hash = calculate_file_xxhash(file_path, 0).await?;
-                if !hash.eq(&value) {
-                    return Err(DownloadError::FileVerify);
-                }
+            let hash = calculate_file_xxhash(file_path, 0).await?;
+            if !hash.eq(&value) {
+                return Err(DownloadError::FileVerify);
             }
+            Ok(())
         }
     }
-
-    Ok(())
 }

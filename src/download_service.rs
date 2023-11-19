@@ -157,7 +157,7 @@ mod test {
             .set_url(&url)
             .set_file_path("temp/temp.7z")
             .set_chunk_download(true)
-            .set_chunk_size(1024 * 1024 * 10)
+            .set_chunk_size(1024 * 1024 * 30)
             .set_retry_times_on_failure(2)
             .build();
         let operation = service.add_downloader(config);
