@@ -1,8 +1,8 @@
-use crate::file_verify::FileVerify;
+use crate::verify::file_verify::FileVerify;
 
 pub struct DownloadConfiguration {
     pub url: Option<String>,
-    #[cfg(feature = "patch")]
+    #[cfg(feature = "file_patch")]
     pub patch_url: Option<String>,
     pub temp_path: Option<String>,
     pub path: Option<String>,
@@ -13,7 +13,7 @@ pub struct DownloadConfiguration {
     pub receive_bytes_per_second: u64,
     pub range_download: bool,
     pub chunk_download: bool,
-    #[cfg(feature = "patch")]
+    #[cfg(feature = "file_patch")]
     pub enable_diff_patch: bool,
     pub file_verify: FileVerify,
     pub download_patch: bool,
@@ -56,13 +56,13 @@ impl DownloadConfigurationBuilder {
         self
     }
 
-    #[cfg(feature = "patch")]
+    #[cfg(feature = "file_patch")]
     pub fn enable_diff_patch(mut self, patch_url: &str) -> DownloadConfigurationBuilder {
         self.config.patch_url = Some(patch_url.to_string());
         self
     }
 
-    #[cfg(feature = "patch")]
+    #[cfg(feature = "file_patch")]
     pub fn set_patch_file_url(mut self, enable_diff_patch: bool) -> DownloadConfigurationBuilder {
         self.config.enable_diff_patch = enable_diff_patch;
         self
@@ -101,7 +101,7 @@ impl DownloadConfigurationBuilder {
             panic!("No download path specified.");
         }
 
-        #[cfg(feature = "patch")]
+        #[cfg(feature = "file_patch")]
         if self.config.enable_diff_patch {
             if self.config.patch_url == None {
                 panic!("No patch file url specified.");
@@ -118,12 +118,12 @@ impl DownloadConfiguration {
             url: None,
             path: None,
             temp_path: None,
-            #[cfg(feature = "patch")]
+            #[cfg(feature = "file_patch")]
             patch_url: None,
             file_verify: FileVerify::None,
             range_download: true,
             chunk_download: false,
-            #[cfg(feature = "patch")]
+            #[cfg(feature = "file_patch")]
             enable_diff_patch: false,
             chunk_size: 1024 * 1024 * 5,
             total_length: 0,
@@ -145,7 +145,7 @@ impl DownloadConfiguration {
 
     pub fn url(&self) -> &str { return self.url.as_ref().unwrap().as_str(); }
 
-    #[cfg(feature = "patch")]
+    #[cfg(feature = "file_patch")]
     pub fn patch_url(&self) -> &str {
         return self.patch_url.as_ref().unwrap().as_str();
     }

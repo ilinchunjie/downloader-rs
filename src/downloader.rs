@@ -1,19 +1,20 @@
 use std::ops::Deref;
-use std::sync::{Arc};
+use std::sync::Arc;
 use std::time::Duration;
 use reqwest::Client;
 use parking_lot::RwLock;
 use tokio::{fs, spawn};
-use tokio::sync::watch::{Receiver};
+use tokio::sync::watch::Receiver;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use crate::download_status::{DownloadFile, DownloadStatus};
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_sender::DownloadSender;
-use crate::{chunk, chunk_hub, file_verify, remote_file};
+use crate::{chunk, chunk_hub, remote_file};
 use crate::error::DownloadError;
-use crate::file_verify::FileVerify;
+use crate::verify::file_verify::FileVerify;
+use crate::verify::file_verify;
 
 pub struct Downloader {
     config: Arc<DownloadConfiguration>,
@@ -45,7 +46,7 @@ impl Downloader {
         let sender = self.sender.clone();
         let download_status = self.download_status.clone();
         let handle = spawn(async move {
-            #[cfg(feature = "patch")]
+            #[cfg(feature = "file_patch")]
             if config.enable_diff_patch {
                 let patch_file_path = format!("{}.patch", config.get_file_path());
                 let download_patch_config = DownloadConfiguration::new()
@@ -143,9 +144,9 @@ impl Downloader {
     }
 }
 
-#[cfg(feature = "patch")]
+#[cfg(feature = "file_patch")]
 async fn start_apply_patch(patch_file_path: &str, config: &Arc<DownloadConfiguration>) -> crate::error::Result<()> {
-    if let Err(_) = download_patch::patch::patch(config.get_file_path(), patch_file_path, config.get_file_temp_path()).await {
+    if let Err(_) = patch::patch::patch(config.get_file_path(), patch_file_path, config.get_file_temp_path()).await {
         return Err(DownloadError::Patch);
     }
     Ok(())
