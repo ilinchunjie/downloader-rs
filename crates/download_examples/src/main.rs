@@ -1,9 +1,3 @@
-use std::thread::sleep;
-use std::time::Duration;
-use downloader_rs::download_configuration::DownloadConfiguration;
-use downloader_rs::download_service::DownloadService;
-
-
 pub fn main() {}
 
 #[cfg(test)]

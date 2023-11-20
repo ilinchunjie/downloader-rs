@@ -76,13 +76,13 @@ jobs:
 
       - name: build library
         run: |
-          cd downloader-unity
+          cd crates/download_unity
           cross build --release --target ${{ matrix.target}}
 
       - name: build archive
         shell: bash
         run: |
-          cd downloader-unity
+          cd crates/download_unity
           staging="downloader-${{ matrix.target }}"
           mkdir -p "$staging"
           
@@ -102,7 +102,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: downloader-unity/${{ env.ASSET }}
+          asset_path: crates/download_unity/${{ env.ASSET }}
           asset_name: ${{ env.ASSET }}
           asset_content_type: application/octet-stream
 
@@ -144,13 +144,13 @@ jobs:
 
       - name: build library
         run: |
-          cd downloader-unity
+          cd crates/download_unity
           cargo ndk -t ${{ matrix.target }} build --release
 
       - name: build archive
         shell: bash
         run: |
-          cd downloader-unity
+          cd crates/download_unity
           staging="downloader-${{ matrix.target }}"
           mkdir -p "$staging"
           
@@ -164,7 +164,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: downloader-unity/${{ env.ASSET }}
+          asset_path: crates/download_unity/${{ env.ASSET }}
           asset_name: ${{ env.ASSET }}
           asset_content_type: application/octet-stream
 
@@ -190,18 +190,18 @@ jobs:
 
       - name: build library
         run: |
-          cd downloader-unity
+          cd crates/download_unity
           cross build --release --target aarch64-apple-ios
 
       - name: strip library
         run: |
-          cd downloader-unity
+          cd crates/download_unity
           strip target/aarch64-apple-ios/release/libdownloader.a
 
       - name: build archive
         shell: bash
         run: |
-          cd downloader-unity
+          cd crates/download_unity
           staging="downloader-aarch64-apple-ios"
           mkdir -p "$staging"
           
@@ -215,6 +215,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: downloader-unity/${{ env.ASSET }}
+          asset_path: crates/download_unity/${{ env.ASSET }}
           asset_name: ${{ env.ASSET }}
           asset_content_type: application/octet-stream

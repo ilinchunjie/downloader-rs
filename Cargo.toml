@@ -12,7 +12,7 @@ exclude = ["/.github", "/.idea", "/res"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
-patch = ["dep:fastcdc", "dep:tokio-stream"]
+patch = ["dep:download_patch"]
 
 [dependencies]
 tokio = { version = "1.32.0", features = ["bytes", "rt-multi-thread", "macros"] }
@@ -27,8 +27,7 @@ xxhash-rust = { version = "0.8.7", features = ["xxh64"] }
 # optional dependencies
 
 ## file_patch
-fastcdc = { version = "3.1.0", features = ["tokio"], optional = true }
-tokio-stream = { version = "0.1.14", optional = true }
+download_patch = { path = "crates/download_patch", features = ["patch"], optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 openssl = { version = "0.10.57", features = ["vendored"] }

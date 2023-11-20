@@ -14,8 +14,6 @@ use crate::download_sender::DownloadSender;
 use crate::{chunk, chunk_hub, file_verify, remote_file};
 use crate::error::DownloadError;
 use crate::file_verify::FileVerify;
-#[cfg(feature = "patch")]
-use crate::patch::file_patch;
 
 pub struct Downloader {
     config: Arc<DownloadConfiguration>,
@@ -147,7 +145,7 @@ impl Downloader {
 
 #[cfg(feature = "patch")]
 async fn start_apply_patch(patch_file_path: &str, config: &Arc<DownloadConfiguration>) -> crate::error::Result<()> {
-    if let Err(_) = file_patch::patch(config.get_file_path(), patch_file_path, config.get_file_temp_path()).await {
+    if let Err(_) = download_patch::patch::patch(config.get_file_path(), patch_file_path, config.get_file_temp_path()).await {
         return Err(DownloadError::Patch);
     }
     Ok(())

@@ -1,0 +1,16 @@
+[package]
+name = "download_patch"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+diff = ["dep:xxhash-rust", "dep:tokio-stream", "dep:fastcdc"]
+patch = []
+
+[dependencies]
+tokio = { version = "1.32.0", features = ["fs", "io-util"] }
+fastcdc = { version = "3.1.0", features = ["tokio"], optional = true }
+tokio-stream = { version = "0.1.14", optional = true }
+xxhash-rust = { version = "0.8.7", features = ["xxh64"], optional = true }

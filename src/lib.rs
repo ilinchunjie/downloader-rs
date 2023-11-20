@@ -9,8 +9,6 @@ mod error;
 mod download_tracker;
 mod download_sender;
 mod download_receiver;
-#[cfg(feature = "patch")]
-mod patch;
 pub mod download_status;
 pub mod file_verify;
 pub mod download_configuration;
