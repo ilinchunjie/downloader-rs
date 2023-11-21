@@ -14,7 +14,7 @@ pub async fn on_download_post(config: &Arc<DownloadConfiguration>, chunk_length:
     if chunk_length > 1 {
         let mut output = OpenOptions::new().create(true).write(true).open(config.get_file_temp_path()).await;
         if let Ok(file) = &mut output {
-            let mut buffer = vec![0; 8192];
+            let mut buffer = [0; 8192];
             for i in 0..chunk_length {
                 let chunk_path = format!("{}.chunk{}", config.get_file_path(), i);
                 if let Ok(chunk_file) = &mut tokio::fs::File::open(chunk_path).await {
