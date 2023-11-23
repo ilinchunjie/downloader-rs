@@ -2,9 +2,11 @@ use std::collections::{VecDeque};
 use std::sync::{Arc};
 use std::thread;
 use std::thread::JoinHandle;
+use std::time::Duration;
 use reqwest::Client;
 use tokio::runtime;
 use tokio::sync::{Mutex, RwLock};
+use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_operation::DownloadOperation;
@@ -95,6 +97,7 @@ impl DownloadService {
                             downloading_count -= 1;
                         }
                     }
+                    sleep(Duration::from_millis(300)).await;
                 }
             })
         });
