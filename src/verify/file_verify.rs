@@ -39,7 +39,7 @@ pub async fn file_validate(file_verify: &FileVerify, file_path: impl AsRef<Path>
         FileVerify::None => Ok(()),
         FileVerify::xxHash(value) => {
             let hash = calculate_file_xxhash(file_path, 0).await?;
-            if !hash.eq(&value) {
+            if !hash.eq(value) {
                 return Err(DownloadError::FileVerify);
             }
             Ok(())
