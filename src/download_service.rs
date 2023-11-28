@@ -6,7 +6,6 @@ use std::time::Duration;
 use reqwest::Client;
 use parking_lot::RwLock;
 use tokio::runtime;
-use tokio::sync::{Mutex};
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use crate::download_configuration::DownloadConfiguration;
@@ -163,6 +162,7 @@ mod test {
             .set_chunk_download(true)
             .set_chunk_size(1024 * 1024 * 30)
             .set_retry_times_on_failure(2)
+            .set_timeout(5)
             .build();
         let operation = service.add_downloader(config);
 

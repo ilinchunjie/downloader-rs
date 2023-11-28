@@ -34,7 +34,7 @@ impl Display for DownloadStatus {
             DownloadStatus::None => write!(f, "None"),
             DownloadStatus::Pending => write!(f, "Pending"),
             DownloadStatus::Head => write!(f, "Head"),
-            DownloadStatus::Download(file) => write!(f, "{}", file),
+            DownloadStatus::Download(file) => write!(f, "Download {}", file),
             DownloadStatus::FileVerify => write!(f, "FileVerify"),
             DownloadStatus::DownloadPost => write!(f, "DownloadPost"),
             DownloadStatus::Complete => write!(f, "Complete"),

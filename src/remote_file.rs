@@ -1,4 +1,5 @@
 use std::sync::{Arc};
+use std::time::Duration;
 use chrono::DateTime;
 use reqwest::{Client};
 use reqwest::header::{HeaderMap};
@@ -47,7 +48,10 @@ pub async fn head(client: &Arc<Client>, config: &Arc<DownloadConfiguration>) -> 
     let mut retry_count = 0;
 
     'r: loop {
-        let request = client.head(config.url());
+        let mut request = client.head(config.url());
+        if config.timeout > 0 {
+            request = request.timeout(Duration::from_secs(config.timeout));
+        }
         let result = request.send().await;
         if let Err(_) = result {
             if retry_count >= retry_count_limit {

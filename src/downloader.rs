@@ -205,13 +205,17 @@ async fn start_download_file(
     }
 
     let receivers = Arc::new(receivers);
-
+    let sync_downloaded_canceltoken = CancellationToken::new();
     let downloaded_size_handle = {
         sync_downloaded_size(&receivers, &sender);
+        let cancel_token = sync_downloaded_canceltoken.clone();
         let sender = sender.clone();
         let receivers = receivers.clone();
         let handle = spawn(async move {
             loop {
+                if cancel_token.is_cancelled() {
+                    break;
+                }
                 sync_downloaded_size(&receivers, &sender);
                 sleep(Duration::from_millis(100)).await;
             }
@@ -224,18 +228,21 @@ async fn start_download_file(
         match handle.await {
             Ok(result) => {
                 if let Err(e) = result {
-                    downloaded_size_handle.abort();
+                    sync_downloaded_canceltoken.cancel();
+                    let _ = downloaded_size_handle.await;
                     return Err(e);
                 }
             }
             Err(_) => {
-                downloaded_size_handle.abort();
+                sync_downloaded_canceltoken.cancel();
+                let _ = downloaded_size_handle.await;
                 return Err(DownloadError::ChunkDownloadHandle);
             }
         }
     }
 
-    downloaded_size_handle.abort();
+    sync_downloaded_canceltoken.cancel();
+    let _ = downloaded_size_handle.await;
 
     if cancel_token.is_cancelled() {
         return Ok(());

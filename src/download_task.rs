@@ -35,9 +35,13 @@ impl DownloadTask {
                 }
             }
 
-            let request = client
+            let mut request = client
                 .get(config.url())
                 .header(RANGE, range_str);
+
+            if config.timeout > 0 {
+                request = request.timeout(Duration::from_secs(config.timeout));
+            }
 
             let result = request.send().await;
 

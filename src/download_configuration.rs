@@ -11,6 +11,7 @@ pub struct DownloadConfiguration {
     pub remote_version: i64,
     pub retry_times_on_failure: u8,
     pub receive_bytes_per_second: u64,
+    pub timeout: u64,
     pub range_download: bool,
     pub chunk_download: bool,
     #[cfg(feature = "file_patch")]
@@ -78,6 +79,11 @@ impl DownloadConfigurationBuilder {
         self
     }
 
+    pub fn set_timeout(mut self, timeout: u64) -> DownloadConfigurationBuilder {
+        self.config.timeout = timeout;
+        self
+    }
+
     pub fn set_download_speed_limit(mut self, receive_bytes_per_second: u64) -> DownloadConfigurationBuilder {
         self.config.receive_bytes_per_second = receive_bytes_per_second;
         self
@@ -130,6 +136,7 @@ impl DownloadConfiguration {
             remote_version: 0,
             retry_times_on_failure: 0,
             receive_bytes_per_second: 0,
+            timeout: 0,
             download_patch: false,
         };
         DownloadConfigurationBuilder::new(config)
