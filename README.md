@@ -28,8 +28,6 @@ a simple file downloader for rust
 - [x] xxHash file verification
 - [x] download speed limit
 - [x] retry times after request failure
-- [x] file diff&patch by using the fast-cdc algorithm.
-  - [ ] android assets directory file
 
 # Welcome to submit pull requests.
 

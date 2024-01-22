@@ -1,6 +1,6 @@
 [package]
 name = "downloader-rs"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 license = "MIT"
 description = "a simple file downloader for rust"
@@ -11,10 +11,6 @@ readme = "README.md"
 exclude = ["/.github", "/.idea", "/res"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[features]
-file_diff = ["dep:fastcdc", "dep:tokio-stream"]
-file_patch = []
-
 [dependencies]
 tokio = { version = "1.32.0", features = ["bytes", "rt-multi-thread", "macros"] }
 tokio-util = { version = "0.7.10" }
@@ -23,12 +19,6 @@ futures = { version = "0.3.29", features = ["async-await"] }
 chrono = { version = "0.4.31" }
 parking_lot = { version = "0.12.1" }
 xxhash-rust = { version = "0.8.7", features = ["xxh64"] }
-
-# optional dependencies
-
-## file_patch
-fastcdc = { version = "3.1.0", features = ["tokio"], optional = true }
-tokio-stream = { version = "0.1.14", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 openssl = { version = "0.10.57", features = ["vendored"] }
