@@ -60,19 +60,21 @@ impl Downloader {
                 return;
             }
 
-            if config.file_verify != FileVerify::None {
-                *download_status.write() = DownloadStatus::FileVerify;
-                if let Err(e) = file_verify::file_validate(&config.file_verify, config.get_file_temp_path()).await {
-                    sender.error_sender.send(e).unwrap();
+            if !config.download_in_memory {
+                if config.file_verify != FileVerify::None {
+                    *download_status.write() = DownloadStatus::FileVerify;
+                    if let Err(e) = file_verify::file_validate(&config.file_verify, config.get_file_temp_path()).await {
+                        sender.error_sender.send(e).unwrap();
+                        *download_status.write() = DownloadStatus::Failed;
+                        return;
+                    }
+                }
+
+                if let Err(e) = fs::rename(config.get_file_temp_path(), config.get_file_path()).await {
+                    sender.error_sender.send(DownloadError::FileRename(format!("file rename failed {}", e))).unwrap();
                     *download_status.write() = DownloadStatus::Failed;
                     return;
                 }
-            }
-
-            if let Err(e) = fs::rename(config.get_file_temp_path(), config.get_file_path()).await {
-                sender.error_sender.send(DownloadError::FileRename(format!("file rename failed {}", e))).unwrap();
-                *download_status.write() = DownloadStatus::Failed;
-                return;
             }
 
             *download_status.write() = DownloadStatus::Complete;
@@ -144,11 +146,13 @@ async fn start_download_file(
         if chunk.valid {
             continue;
         }
+        let sender = sender.clone();
         let handle = spawn(
             chunk::start_download(
                 config.clone(),
                 client.clone(),
                 chunk,
+                sender,
                 cancel_token.clone())
         );
         handles.push(handle);

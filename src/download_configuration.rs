@@ -12,6 +12,7 @@ pub struct DownloadConfiguration {
     pub timeout: u64,
     pub range_download: bool,
     pub chunk_download: bool,
+    pub download_in_memory: bool,
     pub file_verify: FileVerify,
 }
 
@@ -72,6 +73,11 @@ impl DownloadConfigurationBuilder {
         self
     }
 
+    pub fn set_download_in_memory(mut self, download_in_memory: bool) -> DownloadConfigurationBuilder {
+        self.config.download_in_memory = download_in_memory;
+        self
+    }
+
     pub fn set_file_verify(mut self, file_verify: FileVerify) -> DownloadConfigurationBuilder {
         self.config.file_verify = file_verify;
         self
@@ -86,8 +92,10 @@ impl DownloadConfigurationBuilder {
             panic!("Download address not configured.");
         }
 
-        if self.config.path == None {
-            panic!("No download path specified.");
+        if !self.config.download_in_memory {
+            if self.config.path == None {
+                panic!("No download path specified.");
+            }
         }
 
         self.config
@@ -108,6 +116,7 @@ impl DownloadConfiguration {
             remote_version: 0,
             retry_times_on_failure: 0,
             receive_bytes_per_second: 0,
+            download_in_memory: false,
             timeout: 0,
         };
         DownloadConfigurationBuilder::new(config)

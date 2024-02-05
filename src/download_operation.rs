@@ -42,6 +42,11 @@ impl DownloadOperation {
         return (downloaded_size / total_length).clamp(0f64, 1f64);
     }
 
+    pub fn bytes(&self) -> Vec<u8> {
+        let bytes = self.download_receiver.memory_receiver.as_ref().unwrap().borrow();
+        bytes.to_vec()
+    }
+
     pub fn is_done(&self) -> bool {
         return self.downloader.is_done();
     }

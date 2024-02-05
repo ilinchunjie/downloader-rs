@@ -120,7 +120,7 @@ impl DownloadService {
     }
 
     pub fn add_downloader(&mut self, config: DownloadConfiguration) -> DownloadOperation {
-        let (tx, rx) = download_tracker::new();
+        let (tx, rx) = download_tracker::new(config.download_in_memory);
         let mut downloader = Downloader::new(config, self.client.clone(), Arc::new(tx));
         downloader.pending();
         let downloader = Arc::new(downloader);
@@ -155,12 +155,10 @@ mod test {
     pub fn test_download_service() {
         let mut service = DownloadService::new();
         service.start_service();
-        let url = "https://gh.con.sh/https://github.com/AaronFeng753/Waifu2x-Extension-GUI/releases/download/v2.21.12/Waifu2x-Extension-GUI-v2.21.12-Portable.7z".to_string();
+        let url = "https://lan.sausage.xd.com/servers.txt".to_string();
         let config = DownloadConfiguration::new()
             .set_url(&url)
-            .set_file_path("temp/temp.7z")
-            .set_chunk_download(true)
-            .set_chunk_size(1024 * 1024 * 30)
+            .set_download_in_memory(true)
             .set_retry_times_on_failure(2)
             .set_timeout(5)
             .build();
@@ -174,6 +172,9 @@ mod test {
         if operation.is_error() {
             println!("{}", operation.error());
         }
+
+        let bytes = operation.bytes();
+        println!("{}", bytes.len());
 
         service.stop();
     }
