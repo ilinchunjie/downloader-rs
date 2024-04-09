@@ -3,7 +3,7 @@ use std::sync::{Arc};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
-use reqwest::Client;
+use reqwest::{Client, ClientBuilder};
 use parking_lot::RwLock;
 use tokio::runtime;
 use tokio::time::sleep;
@@ -28,6 +28,10 @@ pub struct DownloadService {
 
 impl DownloadService {
     pub fn new() -> Self {
+        let client = ClientBuilder::new()
+            .use_rustls_tls()
+            .build()
+            .unwrap();
         Self {
             multi_thread: false,
             worker_thread_count: 4,
@@ -35,7 +39,7 @@ impl DownloadService {
             parallel_count: Arc::new(RwLock::new(32)),
             thread_handle: None,
             cancel_token: CancellationToken::new(),
-            client: Arc::new(Client::new()),
+            client: Arc::new(client),
         }
     }
 
