@@ -14,20 +14,11 @@ exclude = ["/.github", "/.idea", "/res"]
 [dependencies]
 tokio = { version = "1.32.0", features = ["bytes", "rt-multi-thread", "macros"] }
 tokio-util = { version = "0.7.10" }
-reqwest = { version = "0.11.20", features = ["stream", "rustls-tls"] }
+reqwest = { version = "0.11.20", features = ["stream", "rustls-tls"], default-features = false }
 futures = { version = "0.3.29", features = ["async-await"] }
 chrono = { version = "0.4.31" }
 parking_lot = { version = "0.12.1" }
 xxhash-rust = { version = "0.8.7", features = ["xxh64"] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-openssl = { version = "0.10.57", features = ["vendored"] }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-openssl = { version = "0.10.57", features = ["vendored"] }
-
-[target.'cfg(target_os = "android")'.dependencies]
-openssl = { version = "0.10.57", features = ["vendored"] }
 
 [profile.dev]
 debug = true
