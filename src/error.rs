@@ -1,58 +1,48 @@
-use std::fmt::{Display, Formatter};
+use thiserror::Error;
 
-#[derive(Debug, Clone)]
+/// Errors that can occur during download operations.
+#[derive(Debug, Clone, Error)]
 pub enum DownloadError {
+    #[error("no error")]
     None,
+    #[error("failed to open file")]
     FileOpen,
+    #[error("failed to seek in file")]
     FileSeek,
+    #[error("failed to write to file")]
     FileWrite,
+    #[error("failed to flush file")]
     FileFlush,
+    #[error("failed to rename file: {0}")]
     FileRename(String),
+    #[error("failed to delete file")]
     DeleteFile,
+    #[error("failed to seek in memory buffer")]
     MemorySeek,
+    #[error("failed to write to memory buffer")]
     MemoryWrite,
+    #[error("failed to flush memory buffer")]
     MemoryFlush,
+    #[error("HEAD request failed")]
     Head,
+    #[error("HTTP request failed")]
     Request,
+    #[error("HTTP response error from {0}: status {1}")]
     Response(String, u16),
+    #[error("failed to read response chunk")]
     ResponseChunk,
+    #[error("failed to open or create file")]
     OpenOrCreateFile,
+    #[error("file verification failed")]
     FileVerify,
+    #[error("download task failed")]
     DownloadTask,
+    #[error("patch operation failed")]
     Patch,
+    #[error("chunk download handle error")]
     ChunkDownloadHandle,
+    #[error("configuration error: {0}")]
+    Config(String),
 }
 
 pub type Result<T> = core::result::Result<T, DownloadError>;
-
-impl Display for DownloadError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DownloadError::None => { write!(f, "None") }
-            DownloadError::FileOpen => { write!(f, "FileOpen") }
-            DownloadError::FileSeek => { write!(f, "FileSeek") }
-            DownloadError::FileWrite => { write!(f, "FileWrite") }
-            DownloadError::FileFlush => { write!(f, "FileFlush") }
-            DownloadError::FileRename(message) => {
-                write!(f, "file rename fail {}", message)
-            }
-            DownloadError::DeleteFile => { write!(f, "DeleteFile") }
-            DownloadError::MemorySeek => { write!(f, "MemorySeek") }
-            DownloadError::MemoryWrite => { write!(f, "MemoryWrite") }
-            DownloadError::MemoryFlush => { write!(f, "MemoryFlush") }
-            DownloadError::Head => { write!(f, "Head") }
-            DownloadError::Request => { write!(f, "Request") }
-            DownloadError::Response(url, status_code) => {
-                write!(f, "{} response fail {}", url, status_code)
-            }
-            DownloadError::ResponseChunk => { write!(f, "ResponseChunk") }
-            DownloadError::OpenOrCreateFile => { write!(f, "OpenOrCreateFile") }
-            DownloadError::DownloadTask => { write!(f, "DownloadTask") }
-            DownloadError::FileVerify => {
-                write!(f, "FileVerify")
-            }
-            DownloadError::Patch => { write!(f, "Patch") }
-            DownloadError::ChunkDownloadHandle => { write!(f, "ChunkDownloadHandle") }
-        }
-    }
-}

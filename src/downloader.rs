@@ -1,26 +1,24 @@
-use std::ops::Deref;
 use std::sync::Arc;
-use std::time::Duration;
 use reqwest::Client;
 use parking_lot::RwLock;
 use tokio::{fs, spawn};
-use tokio::sync::watch::Receiver;
 use tokio::task::JoinHandle;
-use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
-use crate::download_status::{DownloadStatus};
+use crate::download_status::DownloadStatus;
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_sender::DownloadSender;
 use crate::{chunk, chunk_hub, remote_file};
 use crate::error::DownloadError;
 use crate::verify::file_verify::FileVerify;
 use crate::verify::file_verify;
+use crate::rate_limiter::RateLimiter;
+use tracing;
 
 pub struct Downloader {
     config: Arc<DownloadConfiguration>,
     client: Arc<Client>,
     download_status: Arc<RwLock<DownloadStatus>>,
-    cancel_token: CancellationToken,
+    cancel_token: RwLock<CancellationToken>,
     sender: Arc<DownloadSender>,
     thread_handle: RwLock<Option<JoinHandle<()>>>,
 }
@@ -32,7 +30,7 @@ impl Downloader {
             config: config.clone(),
             client,
             download_status: Arc::new(RwLock::new(DownloadStatus::None)),
-            cancel_token: CancellationToken::new(),
+            cancel_token: RwLock::new(CancellationToken::new()),
             sender,
             thread_handle: RwLock::new(None),
         };
@@ -42,7 +40,9 @@ impl Downloader {
     pub fn start_download(&self) {
         let config = self.config.clone();
         let client = self.client.clone();
-        let cancel_token = self.cancel_token.clone();
+        let new_token = CancellationToken::new();
+        *self.cancel_token.write() = new_token.clone();
+        let cancel_token = new_token;
         let sender = self.sender.clone();
         let download_status = self.download_status.clone();
         let handle = spawn(async move {
@@ -51,7 +51,8 @@ impl Downloader {
                                                 cancel_token.clone(),
                                                 sender.clone(),
                                                 download_status.clone()).await {
-                sender.error_sender.send(e).unwrap();
+                tracing::error!(error = %e, "download failed");
+                let _ = sender.error_sender.send(e);
                 *download_status.write() = DownloadStatus::Failed;
                 return;
             }
@@ -63,21 +64,24 @@ impl Downloader {
             if !config.download_in_memory {
                 if config.file_verify != FileVerify::None {
                     *download_status.write() = DownloadStatus::FileVerify;
+                    tracing::info!("verifying downloaded file");
                     if let Err(e) = file_verify::file_validate(&config.file_verify, config.get_file_temp_path()).await {
-                        sender.error_sender.send(e).unwrap();
+                        tracing::error!(error = %e, "file verification failed");
+                        let _ = sender.error_sender.send(e);
                         *download_status.write() = DownloadStatus::Failed;
                         return;
                     }
                 }
 
                 if let Err(e) = fs::rename(config.get_file_temp_path(), config.get_file_path()).await {
-                    sender.error_sender.send(DownloadError::FileRename(format!("file rename failed {}", e))).unwrap();
+                    let _ = sender.error_sender.send(DownloadError::FileRename(format!("file rename failed {}", e)));
                     *download_status.write() = DownloadStatus::Failed;
                     return;
                 }
             }
 
             *download_status.write() = DownloadStatus::Complete;
+            tracing::info!("download complete");
         });
         *self.thread_handle.write() = Some(handle);
     }
@@ -106,12 +110,12 @@ impl Downloader {
     }
 
     pub fn stop(&self) {
-        self.cancel_token.cancel();
+        self.cancel_token.read().cancel();
         *self.download_status.write() = DownloadStatus::Stop;
     }
 
     pub async fn stop_async(&self) {
-        self.cancel_token.cancel();
+        self.cancel_token.read().cancel();
         *self.download_status.write() = DownloadStatus::Stop;
     }
 }
@@ -127,6 +131,7 @@ async fn start_download_file(
     }
 
     *status.write() = DownloadStatus::Head;
+    tracing::info!(url = config.url(), "sending HEAD request");
 
     let remote_file = remote_file::head(&client, &config).await?;
 
@@ -137,8 +142,15 @@ async fn start_download_file(
     *status.write() = DownloadStatus::Download;
 
     let _ = sender.download_total_size_sender.send(remote_file.total_length);
+    tracing::info!(total_size = remote_file.total_length, "starting download");
 
-    let (chunks, receivers) = chunk_hub::validate(&config, remote_file).await?;
+    // Pass the shared AtomicU64 counter to chunk_hub::validate.
+    // Each chunk will atomically increment this counter as data arrives.
+    // The receiver side reads the same counter for instant progress.
+    let chunks = chunk_hub::validate(&config, remote_file, sender.downloaded_size.clone()).await?;
+
+    // Create global rate limiter from config
+    let rate_limiter = RateLimiter::new(config.receive_bytes_per_second);
 
     let mut handles = Vec::with_capacity(chunks.len());
     let chunk_length = chunks.len();
@@ -147,70 +159,35 @@ async fn start_download_file(
             continue;
         }
         let sender = sender.clone();
+        let rl = rate_limiter.clone();
         let handle = spawn(
             chunk::start_download(
                 config.clone(),
                 client.clone(),
                 chunk,
                 sender,
-                cancel_token.clone())
+                cancel_token.clone(),
+                rl)
         );
         handles.push(handle);
     }
-
-    fn sync_downloaded_size(receivers: &Arc<Vec<Receiver<u64>>>, sender: &DownloadSender) {
-        let mut downloaded_size = 0u64;
-        for receiver in receivers.deref() {
-            downloaded_size += *receiver.borrow();
-        }
-        let _ = sender.downloaded_size_sender.send(downloaded_size);
-    }
-
-    let receivers = Arc::new(receivers);
-    let sync_downloaded_canceltoken = CancellationToken::new();
-    let downloaded_size_handle = {
-        sync_downloaded_size(&receivers, &sender);
-        let cancel_token = sync_downloaded_canceltoken.clone();
-        let sender = sender.clone();
-        let receivers = receivers.clone();
-        let handle = spawn(async move {
-            loop {
-                if cancel_token.is_cancelled() {
-                    break;
-                }
-                sync_downloaded_size(&receivers, &sender);
-                sleep(Duration::from_millis(100)).await;
-            }
-        });
-        handle
-    };
-
 
     for handle in handles {
         match handle.await {
             Ok(result) => {
                 if let Err(e) = result {
-                    sync_downloaded_canceltoken.cancel();
-                    let _ = downloaded_size_handle.await;
                     return Err(e);
                 }
             }
             Err(_) => {
-                sync_downloaded_canceltoken.cancel();
-                let _ = downloaded_size_handle.await;
                 return Err(DownloadError::ChunkDownloadHandle);
             }
         }
     }
 
-    sync_downloaded_canceltoken.cancel();
-    let _ = downloaded_size_handle.await;
-
     if cancel_token.is_cancelled() {
         return Ok(());
     }
-
-    sync_downloaded_size(&receivers, &sender);
 
     *status.write() = DownloadStatus::DownloadPost;
     chunk_hub::on_download_post(&config, chunk_length).await?;

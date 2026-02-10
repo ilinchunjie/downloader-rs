@@ -3,11 +3,11 @@ use std::time::Duration;
 use futures::StreamExt;
 use reqwest::Client;
 use reqwest::header::RANGE;
-use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use crate::chunk::{Chunk};
 use crate::download_configuration::DownloadConfiguration;
 use crate::error::DownloadError;
+use crate::rate_limiter::RateLimiter;
 
 pub struct DownloadTask {}
 
@@ -22,22 +22,19 @@ impl DownloadTask {
         client: Arc<Client>,
         cancel_token: CancellationToken,
         download_chunk: &mut Chunk,
+        rate_limiter: Arc<RateLimiter>,
     ) -> crate::error::Result<()> {
         let retry_count_limit = config.retry_times_on_failure;
         let mut retry_count = 0;
 
-        'r: loop {
-            let mut range_str = String::new();
-            {
-                let range_download = download_chunk.range_download;
-                if range_download {
-                    range_str = format!("bytes={}-{}", download_chunk.chunk_range.position, download_chunk.chunk_range.end);
-                }
-            }
+        download_chunk.setup().await?;
 
-            let mut request = client
-                .get(config.url())
-                .header(RANGE, range_str);
+        'r: loop {
+            let mut request = client.get(config.url());
+            if download_chunk.range_download {
+                let range_str = format!("bytes={}-{}", download_chunk.chunk_range.position, download_chunk.chunk_range.end);
+                request = request.header(RANGE, range_str);
+            }
 
             if config.timeout > 0 {
                 request = request.timeout(Duration::from_secs(config.timeout));
@@ -71,7 +68,7 @@ impl DownloadTask {
                 }
             }
 
-            download_chunk.setup().await?;
+
             let mut body = response.bytes_stream();
             while let Some(chunk) = body.next().await {
                 if cancel_token.is_cancelled() {
@@ -79,11 +76,9 @@ impl DownloadTask {
                 }
                 match chunk {
                     Ok(bytes) => {
+                        // Apply global rate limiting (replaces per-chunk sleep delay)
+                        rate_limiter.acquire(bytes.len() as u64).await;
                         download_chunk.received_bytes_async(&bytes).await?;
-                        if config.receive_bytes_per_second > 0 {
-                            let delay_duration = Duration::from_secs_f64(bytes.len() as f64 / config.receive_bytes_per_second as f64);
-                            sleep(delay_duration).await;
-                        }
                     }
                     Err(_e) => {
                         if retry_count >= retry_count_limit {

@@ -1,128 +1,110 @@
-use std::collections::{VecDeque};
-use std::sync::{Arc};
-use std::thread;
-use std::thread::JoinHandle;
+use std::collections::VecDeque;
+use std::sync::Arc;
 use std::time::Duration;
 use reqwest::{Client, ClientBuilder};
 use parking_lot::RwLock;
-use tokio::runtime;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use crate::download_configuration::DownloadConfiguration;
 use crate::download_operation::DownloadOperation;
 use crate::download_tracker;
-use crate::downloader::{Downloader};
-
+use crate::downloader::Downloader;
+use tracing;
 
 type DownloaderQueue = VecDeque<Arc<Downloader>>;
 
+/// Service that manages concurrent downloads with configurable parallelism.
+///
+/// Call [`run()`](DownloadService::run) within your Tokio runtime to start the scheduling loop.
 pub struct DownloadService {
-    multi_thread: bool,
-    worker_thread_count: usize,
     cancel_token: CancellationToken,
     parallel_count: Arc<RwLock<usize>>,
     download_queue: Arc<RwLock<DownloaderQueue>>,
-    thread_handle: Option<JoinHandle<()>>,
     client: Arc<Client>,
 }
 
 impl DownloadService {
+    /// Create a new download service with default settings.
     pub fn new() -> Self {
         let client = ClientBuilder::new()
             .use_rustls_tls()
             .build()
             .unwrap();
         Self {
-            multi_thread: false,
-            worker_thread_count: 4,
             download_queue: Arc::new(RwLock::new(DownloaderQueue::new())),
             parallel_count: Arc::new(RwLock::new(32)),
-            thread_handle: None,
             cancel_token: CancellationToken::new(),
             client: Arc::new(client),
         }
     }
 
-    pub fn start_service(&mut self) {
-        let cancel_token = self.cancel_token.clone();
-        let queue = self.download_queue.clone();
-        let parallel_count = self.parallel_count.clone();
-        let worker_thread_count = self.worker_thread_count;
-        let multi_thread = self.multi_thread;
-        let handle = thread::spawn(move || {
-            let rt = match multi_thread {
-                true => {
-                    runtime::Builder::new_multi_thread()
-                        .worker_threads(worker_thread_count)
-                        .enable_all()
-                        .build()
-                        .expect("runtime build failed")
-                }
-                false => {
-                    runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()
-                        .expect("runtime build failed")
-                }
-            };
+    /// Run the download scheduling loop.
+    /// This runs within the caller's existing Tokio runtime — no self-built Runtime.
+    ///
+    /// NOTE: All RwLock guard accesses are scoped to ensure guards are dropped
+    /// before any `.await` point, making this future `Send`.
+    pub async fn run(&self) {
+        tracing::info!("download service started");
+        let mut downloadings: Vec<Arc<Downloader>> = Vec::new();
 
-            rt.block_on(async {
-                let mut downloading_count = 0;
-                let mut downloadings = Vec::new();
-                while !cancel_token.is_cancelled() {
-                    while downloading_count < *parallel_count.read() && queue.read().len() > 0 {
-                        if let Some(downloader) = queue.write().pop_front() {
-                            let downloader_clone = downloader.clone();
-                            if !downloader.is_pending_async().await {
-                                continue;
-                            }
-                            let _ = &mut downloadings.push(downloader_clone);
-                            downloading_count += 1;
-                            downloader.start_download();
-                        }
-                    }
-                    for i in (0..downloadings.len()).rev() {
-                        let downloader = downloadings.get(i).unwrap();
-                        if downloader.is_done() {
-                            downloadings.remove(i);
-                            downloading_count -= 1;
-                        }
-                    }
-                    if downloadings.len() > *parallel_count.read() {
-                        let mut remove_count = downloadings.len() - *parallel_count.read();
-                        while remove_count > 0 {
-                            let index = downloadings.len() - 1;
-                            let downloader = downloadings.get(index).unwrap();
-                            downloader.stop_async().await;
-                            downloader.pending_async().await;
-                            queue.write().push_back(downloader.clone());
-                            downloadings.remove(downloadings.len() - 1);
-                            remove_count -= 1;
-                            downloading_count -= 1;
-                        }
-                    }
-                    sleep(Duration::from_millis(300)).await;
-                }
-            })
-        });
+        loop {
+            if self.cancel_token.is_cancelled() {
+                break;
+            }
 
-        self.thread_handle = Some(handle);
+            // Read parallel limit and queue length with guards dropped immediately
+            let parallel_limit = { *self.parallel_count.read() };
+            let mut queue_has_items = { self.download_queue.read().len() > 0 };
+
+            // Start new downloads up to parallel limit
+            while downloadings.len() < parallel_limit && queue_has_items {
+                let next = { self.download_queue.write().pop_front() };
+                match next {
+                    Some(downloader) => {
+                        if !downloader.is_pending_async().await {
+                            queue_has_items = self.download_queue.read().len() > 0;
+                            continue;
+                        }
+                        downloadings.push(downloader.clone());
+                        tracing::debug!(active = downloadings.len(), "starting download task");
+                        downloader.start_download();
+                    }
+                    None => break,
+                }
+                queue_has_items = self.download_queue.read().len() > 0;
+            }
+
+            // Remove completed downloads
+            downloadings.retain(|d| !d.is_done());
+
+            // Handle parallel count reduction
+            let current_parallel = { *self.parallel_count.read() };
+            if downloadings.len() > current_parallel {
+                let mut remove_count = downloadings.len() - current_parallel;
+                while remove_count > 0 && !downloadings.is_empty() {
+                    let index = downloadings.len() - 1;
+                    let downloader = downloadings[index].clone();
+                    downloader.stop_async().await;
+                    downloader.pending_async().await;
+                    { self.download_queue.write().push_back(downloader); }
+                    downloadings.remove(index);
+                    remove_count -= 1;
+                }
+            }
+
+            tokio::select! {
+                _ = sleep(Duration::from_millis(100)) => {}
+                _ = self.cancel_token.cancelled() => break,
+            }
+        }
     }
 
-    pub fn set_multi_thread(mut self, multi_thread: bool) -> DownloadService {
-        self.multi_thread = multi_thread;
-        self
-    }
-
-    pub fn set_worker_thread_count(mut self, worker_thread_count: usize) -> DownloadService {
-        self.worker_thread_count = worker_thread_count;
-        self
-    }
-
+    /// Set the maximum number of concurrent downloads.
     pub fn set_parallel_count(&mut self, parallel_count: usize) {
         *self.parallel_count.write() = parallel_count;
     }
 
+    /// Add a download to the queue and return a handle to monitor it.
     pub fn add_downloader(&mut self, config: DownloadConfiguration) -> DownloadOperation {
         let (tx, rx) = download_tracker::new(config.download_in_memory);
         let mut downloader = Downloader::new(config, self.client.clone(), Arc::new(tx));
@@ -133,44 +115,38 @@ impl DownloadService {
         return operation;
     }
 
-    pub fn is_finished(&self) -> bool {
-        if let Some(handle) = &self.thread_handle {
-            return handle.is_finished();
-        }
-        return false;
-    }
-
     pub fn stop(&self) {
+        tracing::info!("stopping download service");
         self.cancel_token.cancel();
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::thread;
-    use std::thread::sleep;
-    use std::time::Duration;
-    use tokio::runtime;
-    use tokio::time::Instant;
     use crate::download_configuration::DownloadConfiguration;
     use crate::download_service::DownloadService;
 
-    #[test]
-    pub fn test_download_service() {
+    #[tokio::test]
+    pub async fn test_download_service() {
         let mut service = DownloadService::new();
-        service.start_service();
         let url = "https://lan.sausage.xd.com/servers.txt".to_string();
         let config = DownloadConfiguration::new()
             .set_url(&url)
             .set_download_in_memory(true)
             .set_retry_times_on_failure(2)
             .set_timeout(5)
-            .build();
+            .build()
+            .unwrap();
         let operation = service.add_downloader(config);
 
+        // Spawn the service in the background
+        let service_handle = tokio::spawn(async move {
+            service.run().await;
+        });
 
         while !operation.is_done() {
             println!("{}", operation.downloaded_size());
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
 
         if operation.is_error() {
@@ -180,6 +156,7 @@ mod test {
         let bytes = operation.bytes();
         println!("{}", bytes.len());
 
-        service.stop();
+        // The service handle will be dropped and cancelled
+        service_handle.abort();
     }
 }

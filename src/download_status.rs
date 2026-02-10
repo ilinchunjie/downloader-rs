@@ -29,9 +29,9 @@ impl Display for DownloadStatus {
     }
 }
 
-impl Into<u8> for DownloadStatus {
-    fn into(self) -> u8 {
-        match self {
+impl From<DownloadStatus> for u8 {
+    fn from(status: DownloadStatus) -> u8 {
+        match status {
             DownloadStatus::None => 0,
             DownloadStatus::Pending => 1,
             DownloadStatus::Head => 2,

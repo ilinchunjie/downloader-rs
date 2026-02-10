@@ -1,7 +1,7 @@
 use std::path::Path;
 use tokio::fs;
 use tokio::fs::{File, OpenOptions};
-use tokio::io::{AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use crate::error::DownloadError;
 
 pub struct Stream {
@@ -9,8 +9,8 @@ pub struct Stream {
 }
 
 impl Stream {
-    pub async fn new(path: &str, append: bool) -> crate::error::Result<Stream> {
-        let path = Path::new(path);
+    pub async fn new(path: impl AsRef<Path>, append: bool) -> crate::error::Result<Stream> {
+        let path = path.as_ref();
         if let Some(parent) = path.parent() {
             if parent.symlink_metadata().is_err() {
                 let _ = fs::create_dir_all(parent).await;
