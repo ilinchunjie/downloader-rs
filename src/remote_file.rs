@@ -48,20 +48,30 @@ pub async fn head(client: &Arc<Client>, config: &Arc<DownloadConfiguration>) -> 
     let mut retry_count = 0;
 
     'r: loop {
-        let mut request = client.head(config.url());
-        if config.timeout > 0 {
-            request = request.timeout(Duration::from_secs(config.timeout));
-        }
-        let result = request.send().await;
-        if let Err(_) = result {
-            if retry_count >= retry_count_limit {
-                return Err(DownloadError::Head);
-            } else {
+        let request = client.head(config.url());
+
+        let send_future = request.send();
+        let result = if config.timeout > 0 {
+            tokio::time::timeout(
+                Duration::from_secs(config.timeout),
+                send_future,
+            ).await
+        } else {
+            Ok(send_future.await)
+        };
+
+        // Timeout or request error → retry
+        let response = match result {
+            Ok(Ok(resp)) => resp,
+            _ => {
+                if retry_count >= retry_count_limit {
+                    return Err(DownloadError::Head);
+                }
                 retry_count += 1;
                 continue 'r;
             }
-        }
-        let response = result.unwrap();
+        };
+
         if let Err(e) = response.error_for_status_ref() {
             if retry_count >= retry_count_limit {
                 if let Some(status_code) = e.status() {

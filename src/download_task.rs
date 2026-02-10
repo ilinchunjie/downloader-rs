@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 use futures::StreamExt;
 use reqwest::Client;
 use reqwest::header::RANGE;
@@ -36,26 +35,32 @@ impl DownloadTask {
                 request = request.header(RANGE, range_str);
             }
 
-            if config.timeout > 0 {
-                request = request.timeout(Duration::from_secs(config.timeout));
-            }
-
-            let result = request.send().await;
+            let send_future = request.send();
+            let result = if config.timeout > 0 {
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(config.timeout),
+                    send_future,
+                ).await
+            } else {
+                Ok(send_future.await)
+            };
 
             if cancel_token.is_cancelled() {
                 return Ok(());
             }
 
-            if let Err(_) = result {
-                if retry_count >= retry_count_limit {
-                    return Err(DownloadError::Request);
-                } else {
+            // Timeout or request error → retry
+            let response = match result {
+                Ok(Ok(resp)) => resp,
+                _ => {
+                    if retry_count >= retry_count_limit {
+                        return Err(DownloadError::Request);
+                    }
                     retry_count += 1;
                     continue 'r;
                 }
-            }
+            };
 
-            let response = result.unwrap();
 
             if let Err(e) = response.error_for_status_ref() {
                 if retry_count >= retry_count_limit {
@@ -70,25 +75,30 @@ impl DownloadTask {
 
 
             let mut body = response.bytes_stream();
-            while let Some(chunk) = body.next().await {
+            let chunk_timeout = std::time::Duration::from_secs(if config.timeout > 0 { config.timeout } else { 60 });
+            loop {
+                let chunk_result = tokio::time::timeout(chunk_timeout, body.next()).await;
+
                 if cancel_token.is_cancelled() {
                     return Ok(());
                 }
-                match chunk {
-                    Ok(bytes) => {
-                        // Apply global rate limiting (replaces per-chunk sleep delay)
+
+                match chunk_result {
+                    Ok(Some(Ok(bytes))) => {
+                        // Apply global rate limiting
                         rate_limiter.acquire(bytes.len() as u64).await;
                         download_chunk.received_bytes_async(&bytes).await?;
                     }
-                    Err(_e) => {
+                    Ok(Some(Err(_))) | Err(_) => {
+                        // Stream error or timeout → retry
                         if retry_count >= retry_count_limit {
                             download_chunk.flush_async().await?;
                             return Err(DownloadError::ResponseChunk);
-                        } else {
-                            retry_count += 1;
-                            continue 'r;
                         }
+                        retry_count += 1;
+                        continue 'r;
                     }
+                    Ok(None) => break, // Stream finished
                 }
             }
             return Ok(());
